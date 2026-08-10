@@ -1,0 +1,86 @@
+{% extends "monitoring/base.html" %}
+
+{% block content %}
+<section class="system-grid">
+    <article class="system-card">
+        <span>ỨNG DỤNG WEB</span>
+        <h2>Đang hoạt động</h2>
+        <dl>
+            <div><dt>Địa chỉ DEV</dt><dd>127.0.0.1:8001</dd></div>
+            <div><dt>Database DEV</dt><dd>PostgreSQL</dd></div>
+            <div><dt>Môi trường</dt><dd>DEV / TEST</dd></div>
+        </dl>
+    </article>
+    <article class="system-card">
+        <span>PLC THẬT</span>
+        <h2>Chưa cấu hình</h2>
+        <dl>
+            <div><dt>IP PLC</dt><dd>Chờ xác nhận</dd></div>
+            <div><dt>Protocol</dt><dd>Chờ xác nhận</dd></div>
+            <div><dt>Port</dt><dd>Chờ xác nhận</dd></div>
+        </dl>
+    </article>
+    <article class="system-card">
+        <span>PHẠM VI</span>
+        <h2>{{ machines|length }} máy hoạt động</h2>
+        <dl>
+            <div><dt>Web port</dt><dd>8001</dd></div>
+            <div><dt>Warehouse port</dt><dd>8000</dd></div>
+            <div><dt>Database</dt><dd>Tách riêng</dd></div>
+        </dl>
+    </article>
+</section>
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span>TRẠNG THÁI NGUỒN DỮ LIỆU</span>
+            <h2>Collector theo từng máy</h2>
+            <p>Dữ liệu quá 15 giây được đánh dấu gián đoạn để tránh hiển thị số cũ như dữ liệu realtime.</p>
+        </div>
+    </div>
+    <div class="table-scroll">
+        <table>
+            <thead><tr><th>Máy</th><th>Trạng thái</th><th>Nguồn</th><th>Bản ghi cuối</th><th>Độ trễ</th></tr></thead>
+            <tbody>
+            {% for item in snapshots %}
+                <tr>
+                    <td><strong>{{ item.machine.code }}</strong><small>{{ item.machine.name }}</small></td>
+                    <td><span class="state-badge state-{{ item.state }}">{{ item.state_label }}</span></td>
+                    <td>{{ item.connection_label }}</td>
+                    <td class="mono">{% if item.latest %}{{ item.latest.recorded_at|date:"d/m/Y H:i:s" }}{% else %}—{% endif %}</td>
+                    <td class="mono">{% if item.age_seconds != None %}{{ item.age_seconds }} giây{% else %}—{% endif %}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5" class="empty-row">Chưa có máy.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<details class="technical-panel" open>
+    <summary>
+        <span><strong>Mapping DEV / TEST</strong><small>Địa chỉ đề xuất; phải xác nhận lại với chương trình PLC thật</small></span>
+        <b>MỞ / ĐÓNG</b>
+    </summary>
+    <div class="technical-body">
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>Địa chỉ</th><th>Kiểu</th><th>Tên dữ liệu</th><th>Field database</th><th>Đơn vị</th></tr></thead>
+                <tbody>
+                {% for item in mapping %}
+                    <tr>
+                        <td class="mono">{{ item.address }}</td>
+                        <td>{{ item.data_type }}</td>
+                        <td><strong>{{ item.name }}</strong><small>{{ item.technical_name }}</small></td>
+                        <td class="mono">{{ item.field }}</td>
+                        <td>{{ item.unit }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</details>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="pagination" aria-label="Phân trang">
+    {% if page_obj.has_previous %}
+    <a href="?{% if query_string %}{{ query_string }}&{% endif %}page=1">Trang đầu</a>
+    <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">Trang trước</a>
+    {% endif %}
+    <span>Trang {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">Trang sau</a>
+    <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.paginator.num_pages }}">Trang cuối</a>
+    {% endif %}
+</nav>
+{% endif %}

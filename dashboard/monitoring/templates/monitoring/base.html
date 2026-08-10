@@ -1,0 +1,128 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }} | KV-8000 Monitoring</title>
+    <link rel="stylesheet" href="{% static 'monitoring/dashboard.css' %}">
+    <script src="{% static 'monitoring/dashboard.js' %}" defer></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body
+    data-auto-refresh-seconds="{{ auto_refresh_seconds|default:0 }}"
+    data-page-key="{{ page_key }}"
+>
+<div class="app-shell">
+    <aside class="sidebar">
+        <a class="brand" href="{% url 'monitoring:dashboard' %}">
+            <span class="brand-logo">
+                <img src="{% static 'monitoring/img/logo_huynhduc.jpeg' %}" alt="Huỳnh Đức">
+            </span>
+            <span class="brand-copy">
+                <strong>Machine Monitoring</strong>
+                <small>KEYENCE KV-8000</small>
+            </span>
+        </a>
+
+        <div class="nav-caption">ĐIỀU HƯỚNG HỆ THỐNG</div>
+
+        <nav class="main-nav" aria-label="Điều hướng chính">
+            <a class="nav-link {% if page_key == 'overview' %}active{% endif %}"
+               href="{% url 'monitoring:dashboard' %}">
+                <span class="nav-mark">01</span>
+                <span class="nav-copy"><strong>Tổng quan</strong><small>Toàn bộ máy đang giám sát</small></span>
+                <span class="nav-arrow">›</span>
+            </a>
+
+            {% if machines %}
+            <a class="nav-link {% if page_key == 'machine' %}active{% endif %}"
+               href="{% url 'monitoring:machine_detail' machines.0.code %}">
+                <span class="nav-mark">02</span>
+                <span class="nav-copy"><strong>Chi tiết máy</strong><small>Trạng thái, tín hiệu và xu hướng</small></span>
+                <span class="nav-arrow">›</span>
+            </a>
+            {% else %}
+            <span class="nav-link disabled">
+                <span class="nav-mark">02</span>
+                <span class="nav-copy"><strong>Chi tiết máy</strong><small>Chưa có máy trong hệ thống</small></span>
+            </span>
+            {% endif %}
+
+            <a class="nav-link nav-alarm {% if page_key == 'alarms' %}active{% endif %}"
+               href="{% url 'monitoring:alarms' %}">
+                <span class="nav-mark">03</span>
+                <span class="nav-copy"><strong>Cảnh báo</strong><small>Sự cố đang có và lịch sử lỗi</small></span>
+                <span class="nav-arrow">›</span>
+            </a>
+
+            <a class="nav-link {% if page_key == 'history' %}active{% endif %}"
+               href="{% url 'monitoring:history' %}">
+                <span class="nav-mark">04</span>
+                <span class="nav-copy"><strong>Lịch sử & báo cáo</strong><small>Lọc, tra cứu và xuất CSV</small></span>
+                <span class="nav-arrow">›</span>
+            </a>
+
+            <a class="nav-link {% if page_key == 'system' %}active{% endif %}"
+               href="{% url 'monitoring:system' %}">
+                <span class="nav-mark">05</span>
+                <span class="nav-copy"><strong>Hệ thống</strong><small>Collector, kết nối và mapping</small></span>
+                <span class="nav-arrow">›</span>
+            </a>
+        </nav>
+
+        <section class="sidebar-status" aria-label="Trạng thái dịch vụ">
+            <div class="sidebar-status-title">TRẠNG THÁI DỊCH VỤ</div>
+            <div class="sidebar-status-row">
+                <span>Ứng dụng Web</span><strong class="status-ok"><i></i> ONLINE</strong>
+            </div>
+            <div class="sidebar-status-row">
+                <span>Môi trường</span><strong>DEV / TEST</strong>
+            </div>
+            <div class="sidebar-status-row">
+                <span>Cổng Web</span><strong>8001</strong>
+            </div>
+            <div class="sidebar-status-row">
+                <span>Database</span><strong>PostgreSQL</strong>
+            </div>
+        </section>
+
+        <a class="admin-link" href="/admin/"><span>⚙</span> Mở trang quản trị</a>
+    </aside>
+
+    <main class="main-area">
+        <header class="topbar">
+            <div class="page-title-block">
+                <span>{{ page_eyebrow }}</span>
+                <h1>{{ page_title }}</h1>
+            </div>
+
+            <div class="topbar-actions">
+                {% if auto_refresh_seconds %}
+                <div class="header-data-block">
+                    <span>Tự cập nhật</span>
+                    <strong><b id="refreshCountdown">{{ auto_refresh_seconds }}</b> giây</strong>
+                </div>
+                {% endif %}
+                <div class="header-data-block system-time">
+                    <span>Thời gian hệ thống</span>
+                    <strong id="liveClock">{{ current_time|date:"d/m/Y H:i:s" }}</strong>
+                </div>
+                <button type="button" class="header-button refresh-button" id="refreshButton" title="Làm mới trang">
+                    <span>↻</span><b>Làm mới</b>
+                </button>
+                <button type="button" class="header-button fullscreen-button" id="fullscreenButton" title="Toàn màn hình">
+                    <span>⛶</span><b>Toàn màn hình</b>
+                </button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+</div>
+
+{% block extra_script %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,92 @@
+{% extends "monitoring/base.html" %}
+
+{% block content %}
+<section class="filter-panel">
+    <div class="filter-intro">
+        <span>BỘ LỌC</span>
+        <h2>Tra cứu dữ liệu máy</h2>
+        <p>Mặc định hiển thị 50 bản ghi mỗi trang; có thể chọn 25, 50 hoặc 100.</p>
+    </div>
+    <form method="get" class="filter-grid">
+        <label>Máy
+            <select name="machine">
+                {% for item in machines %}
+                <option value="{{ item.code }}" {% if machine and item.code == machine.code %}selected{% endif %}>{{ item.code }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Trạng thái
+            <select name="status">
+                <option value="">Tất cả</option>
+                <option value="RUN" {% if selected_status == 'RUN' %}selected{% endif %}>Đang chạy</option>
+                <option value="STOP" {% if selected_status == 'STOP' %}selected{% endif %}>Đang dừng</option>
+                <option value="ALARM" {% if selected_status == 'ALARM' %}selected{% endif %}>Cảnh báo</option>
+                <option value="OFFLINE" {% if selected_status == 'OFFLINE' %}selected{% endif %}>PLC Offline</option>
+            </select>
+        </label>
+        <label>Nguồn
+            <select name="source">
+                <option value="">Tất cả</option>
+                <option value="MOCK" {% if selected_source == 'MOCK' %}selected{% endif %}>Mô phỏng</option>
+                <option value="PLC" {% if selected_source == 'PLC' %}selected{% endif %}>PLC thật</option>
+            </select>
+        </label>
+        <label>Từ ngày<input type="date" name="date_from" value="{{ date_from_value }}"></label>
+        <label>Đến ngày<input type="date" name="date_to" value="{{ date_to_value }}"></label>
+        <label>Số dòng
+            <select name="page_size">
+                <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+                <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+            </select>
+        </label>
+        <div class="filter-actions">
+            <button class="button primary-button" type="submit">Áp dụng</button>
+            <a class="button" href="{% url 'monitoring:history' %}">Xóa lọc</a>
+            <button class="button success-button" type="submit" name="export" value="csv">Xuất CSV</button>
+        </div>
+    </form>
+</section>
+
+<section class="summary-strip history-summary">
+    <article><span>Tổng bản ghi</span><strong>{{ counters.total }}</strong></article>
+    <article class="summary-run"><span>Đang chạy</span><strong>{{ counters.run }}</strong></article>
+    <article class="summary-stop"><span>Đang dừng</span><strong>{{ counters.stop }}</strong></article>
+    <article class="summary-alarm"><span>Cảnh báo</span><strong>{{ counters.alarm }}</strong></article>
+</section>
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span>KẾT QUẢ TRA CỨU</span>
+            <h2>{% if machine %}{{ machine.code }} — {{ machine.name }}{% else %}Chưa có máy{% endif %}</h2>
+            <p>Mỗi dòng là một lần Collector ghi dữ liệu vào database.</p>
+        </div>
+        <strong class="current-value">Trang {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</strong>
+    </div>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr><th>Thời gian</th><th>Trạng thái</th><th>Chế độ</th><th>Sản lượng</th><th>Cycle Time</th><th>Alarm</th><th>Recipe</th><th>Nguồn</th></tr>
+            </thead>
+            <tbody>
+            {% for reading in page_obj %}
+                <tr>
+                    <td class="mono">{{ reading.recorded_at|date:"d/m/Y H:i:s" }}</td>
+                    <td><span class="state-badge state-{{ reading.status_label|lower }}">{{ reading.status_label }}</span></td>
+                    <td>{% if reading.auto_mode_bit %}Tự động{% else %}Thủ công{% endif %}</td>
+                    <td class="mono">{{ reading.production_count }}</td>
+                    <td class="mono">{{ reading.cycle_time_ms|default:"—" }} ms</td>
+                    <td class="mono">{{ reading.alarm_code }}</td>
+                    <td class="mono">{{ reading.recipe_no }}</td>
+                    <td>{{ reading.source }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8" class="empty-row">Không có dữ liệu phù hợp với bộ lọc.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include "monitoring/pagination.html" %}
+</section>
+{% endblock %}

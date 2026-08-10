@@ -1,0 +1,190 @@
+{% extends "monitoring/base.html" %}
+
+{% block content %}
+<section class="summary-strip" aria-label="Tóm tắt trạng thái">
+    <article class="summary-card summary-total">
+        <span class="summary-label">TỔNG SỐ MÁY</span>
+        <div><strong>{{ summary.total }}</strong><small>máy đang cấu hình</small></div>
+    </article>
+    <article class="summary-card summary-run">
+        <span class="summary-label">ĐANG CHẠY</span>
+        <div><strong>{{ summary.run }}</strong><small>máy vận hành bình thường</small></div>
+    </article>
+    <article class="summary-card summary-stop">
+        <span class="summary-label">ĐANG DỪNG</span>
+        <div><strong>{{ summary.stop }}</strong><small>máy chưa thực hiện chu kỳ</small></div>
+    </article>
+    <article class="summary-card summary-alarm">
+        <span class="summary-label">CẢNH BÁO HIỆN TẠI</span>
+        <div><strong>{{ summary.alarm }}</strong><small>máy cần kiểm tra</small></div>
+    </article>
+    <article class="summary-card summary-offline">
+        <span class="summary-label">MẤT DỮ LIỆU</span>
+        <div><strong>{{ summary.offline }}</strong><small>Collector không cập nhật</small></div>
+    </article>
+</section>
+
+{% if active_alarms %}
+<section class="attention-banner danger-banner">
+    <div class="banner-icon">!</div>
+    <div class="banner-copy">
+        <strong>{{ active_alarms|length }} máy đang phát sinh cảnh báo</strong>
+        <span>Mở danh sách cảnh báo để xem mã lỗi và thời điểm ghi nhận.</span>
+    </div>
+    <a class="button danger-button" href="{% url 'monitoring:alarms' %}">Xem cảnh báo ngay</a>
+</section>
+{% elif summary.offline %}
+<section class="attention-banner warning-banner">
+    <div class="banner-icon">↯</div>
+    <div class="banner-copy">
+        <strong>Dữ liệu không còn cập nhật theo thời gian thực</strong>
+        <span>Hãy chạy lại Mock Collector hoặc kiểm tra PLC Collector trước khi dùng số liệu để giám sát.</span>
+    </div>
+    <a class="button warning-button" href="{% url 'monitoring:system' %}">Kiểm tra hệ thống</a>
+</section>
+{% else %}
+<section class="attention-banner normal-banner">
+    <div class="banner-icon">✓</div>
+    <div class="banner-copy">
+        <strong>Hệ thống đang cập nhật bình thường</strong>
+        <span>Không có cảnh báo hoạt động và dữ liệu mới vẫn đang được ghi nhận.</span>
+    </div>
+    <a class="button primary-button" href="{% if focus_snapshot %}{% url 'monitoring:machine_detail' focus_snapshot.machine.code %}{% else %}{% url 'monitoring:system' %}{% endif %}">Mở chi tiết máy</a>
+</section>
+{% endif %}
+
+<section class="dashboard-workspace">
+    <article class="panel trend-panel">
+        <div class="panel-head">
+            <div>
+                <span>XU HƯỚNG GẦN NHẤT</span>
+                <h2>Cycle Time theo thời gian</h2>
+                {% if focus_snapshot %}
+                <p>{{ focus_snapshot.machine.code }} — tối đa 60 bản ghi mới nhất</p>
+                {% else %}
+                <p>Chưa có máy để hiển thị xu hướng.</p>
+                {% endif %}
+            </div>
+            {% if focus_snapshot and focus_snapshot.latest %}
+            <div class="panel-value">
+                <small>Giá trị hiện tại</small>
+                <strong>{{ focus_snapshot.latest.cycle_time_ms|default:"—" }} <b>ms</b></strong>
+            </div>
+            {% endif %}
+        </div>
+        <div class="chart-wrap overview-chart-wrap">
+            <canvas id="overviewCycleChart" aria-label="Biểu đồ Cycle Time tổng quan"></canvas>
+        </div>
+    </article>
+
+    <aside class="dashboard-side-stack">
+        <article class="health-panel {% if collector_ok %}health-ok{% else %}health-error{% endif %}">
+            <div class="health-panel-head">
+                <span>TRẠNG THÁI THU THẬP DỮ LIỆU</span>
+                <i></i>
+            </div>
+            <h2>{% if collector_ok %}ĐANG CẬP NHẬT{% else %}ĐANG GIÁN ĐOẠN{% endif %}</h2>
+            {% if focus_snapshot %}
+            <dl>
+                <div><dt>Máy đại diện</dt><dd>{{ focus_snapshot.machine.code }}</dd></div>
+                <div><dt>Nguồn</dt><dd>{{ focus_snapshot.connection_label }}</dd></div>
+                <div><dt>Bản ghi cuối</dt><dd>{% if focus_snapshot.latest %}{{ focus_snapshot.latest.recorded_at|date:"H:i:s d/m/Y" }}{% else %}—{% endif %}</dd></div>
+                <div><dt>Độ trễ</dt><dd>{% if focus_snapshot.age_seconds != None %}{{ focus_snapshot.age_seconds }} giây{% else %}—{% endif %}</dd></div>
+            </dl>
+            {% else %}
+            <p>Chưa có máy trong hệ thống.</p>
+            {% endif %}
+            <a class="panel-link" href="{% url 'monitoring:system' %}">Mở chẩn đoán hệ thống →</a>
+        </article>
+
+        <article class="recent-alarm-panel">
+            <div class="mini-panel-head">
+                <div>
+                    <span>LỊCH SỬ CẢNH BÁO GẦN NHẤT</span>
+                    <strong>{{ recent_alarm_rows|length }} bản ghi mới</strong>
+                </div>
+                <a href="{% url 'monitoring:alarms' %}">Xem tất cả</a>
+            </div>
+            <div class="mini-alarm-list">
+                {% for reading in recent_alarm_rows %}
+                <div class="mini-alarm-row">
+                    <span class="alarm-dot"></span>
+                    <div><strong>{{ reading.machine.code }} · Mã {{ reading.alarm_code }}</strong><small>{{ reading.recorded_at|date:"H:i:s d/m/Y" }}</small></div>
+                    <b>{{ reading.source }}</b>
+                </div>
+                {% empty %}
+                <div class="mini-empty">Chưa có bản ghi cảnh báo.</div>
+                {% endfor %}
+            </div>
+        </article>
+    </aside>
+</section>
+
+<section class="section-heading">
+    <div>
+        <span>DANH SÁCH MÁY ĐANG THEO DÕI</span>
+        <h2>Trạng thái toàn hệ thống</h2>
+        <p>Bấm vào từng máy để mở màn hình vận hành, biểu đồ và tín hiệu PLC.</p>
+    </div>
+</section>
+
+<div class="machine-grid">
+    {% for item in snapshots %}
+    <a class="machine-tile state-border-{{ item.state }}"
+       href="{% url 'monitoring:machine_detail' item.machine.code %}">
+        <div class="machine-tile-topline">
+            <span class="machine-number">MÁY {{ forloop.counter|stringformat:"02d" }}</span>
+            <span class="state-badge state-{{ item.state }}">{{ item.state_label }}</span>
+        </div>
+
+        <div class="machine-title-row">
+            <div>
+                <h3>{{ item.machine.code }}</h3>
+                <p>{{ item.machine.name }}</p>
+            </div>
+            <span class="open-machine">MỞ CHI TIẾT ›</span>
+        </div>
+
+        {% if item.latest %}
+        <div class="machine-metrics">
+            <div>
+                <span>Sản lượng</span>
+                <strong>{{ item.latest.production_count }}</strong>
+                <small>sản phẩm</small>
+            </div>
+            <div>
+                <span>Cycle Time</span>
+                <strong>{{ item.latest.cycle_time_ms|default:"—" }}</strong>
+                <small>ms</small>
+            </div>
+            <div>
+                <span>Chế độ</span>
+                <strong class="metric-text">{% if item.latest.auto_mode_bit %}AUTO{% else %}MANUAL{% endif %}</strong>
+                <small>MR103</small>
+            </div>
+            <div>
+                <span>Mã Alarm</span>
+                <strong class="metric-text">{{ item.latest.alarm_code }}</strong>
+                <small>DM1004</small>
+            </div>
+        </div>
+
+        <div class="machine-tile-foot">
+            <span class="connection-label connection-{{ item.connection }}"><i></i>{{ item.connection_label }}</span>
+            <span>Cập nhật {{ item.age_seconds }} giây trước</span>
+        </div>
+        {% else %}
+        <div class="empty-inline">Chưa có bản ghi từ Collector.</div>
+        {% endif %}
+    </a>
+    {% empty %}
+    <div class="empty-state">
+        <h2>Chưa có máy trong hệ thống</h2>
+        <p>Tạo Machine trong Django Admin trước khi chạy Collector.</p>
+        <a class="button primary-button" href="/admin/">Mở Django Admin</a>
+    </div>
+    {% endfor %}
+</div>
+
+{{ overview_chart_data|json_script:"overview-chart-data" }}
+{% endblock %}

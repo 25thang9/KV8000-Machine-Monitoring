@@ -1,0 +1,553 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>Kết nối và chẩn đoán | Giám sát máy</title>
+
+    <link
+        rel="stylesheet"
+        href="{% static 'monitoring/dashboard.css' %}"
+    >
+
+    <script
+        src="{% static 'monitoring/dashboard.js' %}"
+        defer
+    ></script>
+</head>
+
+<body data-refresh-seconds="5">
+
+<div class="app-layout">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-logo">
+                <img
+                    src="{% static 'monitoring/img/logo_huynhduc.jpeg' %}"
+                    alt="Logo Huỳnh Đức"
+                >
+            </div>
+
+            <div class="brand-text">
+                <strong>Giám sát máy</strong>
+                <span>KV-8000 Monitoring</span>
+            </div>
+
+        </div>
+
+        <div class="nav-title">
+            CHỨC NĂNG
+        </div>
+
+        <nav class="sidebar-nav">
+
+            <a
+                href="{% url 'monitoring:dashboard' %}"
+                class="nav-item"
+            >
+                <span class="nav-icon">▦</span>
+                <span>Tổng quan</span>
+            </a>
+
+            <a
+                href="{% url 'monitoring:live_data' %}"
+                class="nav-item"
+            >
+                <span class="nav-icon">▥</span>
+                <span>Dữ liệu hiện tại</span>
+            </a>
+
+            <a
+                href="{% url 'monitoring:plc_signals' %}"
+                class="nav-item active"
+            >
+                <span class="nav-icon">▣</span>
+                <span>Kết nối và chẩn đoán</span>
+            </a>
+
+            <a
+                href="{% url 'monitoring:dashboard' %}#reading-history"
+                class="nav-item"
+            >
+                <span class="nav-icon">◷</span>
+                <span>Lịch sử dữ liệu</span>
+            </a>
+
+            <a href="/admin/" class="nav-item">
+                <span class="nav-icon">⚙</span>
+                <span>Quản trị hệ thống</span>
+            </a>
+
+        </nav>
+
+        <div class="sidebar-system">
+
+            <div class="environment-header">
+                <span>Môi trường</span>
+                <strong>DEV / TEST</strong>
+            </div>
+
+            <div class="system-running">
+                <i></i>
+                Dịch vụ Web đang chạy
+            </div>
+
+            <div class="system-detail">
+                <span>Máy chủ</span>
+                <strong>127.0.0.1</strong>
+            </div>
+
+            <div class="system-detail">
+                <span>Cổng Web</span>
+                <strong>8001</strong>
+            </div>
+
+            <div class="system-detail">
+                <span>Cơ sở dữ liệu</span>
+                <strong>PostgreSQL</strong>
+            </div>
+
+        </div>
+
+        <div class="sidebar-version">
+            Phiên bản 0.3.0
+        </div>
+
+    </aside>
+
+
+    <main class="main-content">
+
+        <header class="topbar">
+
+            <div class="page-heading">
+                <span>KIỂM TRA HOẠT ĐỘNG HỆ THỐNG</span>
+                <h1>Kết nối và chẩn đoán</h1>
+            </div>
+
+            <div class="topbar-right">
+
+                <div class="system-clock">
+                    <span>Thời gian hệ thống</span>
+
+                    <strong id="liveClock">
+                        {{ current_time|date:"d/m/Y H:i:s" }}
+                    </strong>
+                </div>
+
+                <a href="/admin/" class="account-button">
+                    <span class="account-avatar">AD</span>
+
+                    <span>
+                        <strong>Quản trị viên</strong>
+                        <small>Mở trang quản trị</small>
+                    </span>
+                </a>
+
+            </div>
+
+        </header>
+
+
+        <div class="content-area">
+
+            <section class="action-toolbar">
+
+                <form
+                    method="get"
+                    class="machine-select-form"
+                >
+                    <label for="machineSelect">
+                        Máy đang kiểm tra
+                    </label>
+
+                    <select
+                        id="machineSelect"
+                        name="machine"
+                        onchange="this.form.submit()"
+                    >
+                        {% for item in machines %}
+
+                        <option
+                            value="{{ item.code }}"
+                            {% if machine and item.code == machine.code %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ item.code }} — {{ item.name }}
+                        </option>
+
+                        {% empty %}
+
+                        <option value="">
+                            Chưa có máy
+                        </option>
+
+                        {% endfor %}
+                    </select>
+
+                    <span class="machine-select-note">
+                        Chọn máy để xem trạng thái kết nối tương ứng
+                    </span>
+                </form>
+
+                <div class="toolbar-buttons">
+
+                    <button
+                        type="button"
+                        id="refreshButton"
+                        class="button button-primary"
+                    >
+                        Làm mới
+                    </button>
+
+                    <a
+                        href="{% url 'monitoring:dashboard' %}"
+                        class="button button-secondary"
+                        style="text-decoration: none;"
+                    >
+                        Về trang tổng quan
+                    </a>
+
+                </div>
+
+            </section>
+
+
+            {% if machine and latest %}
+
+            <section class="operator-overview">
+
+                <div class="operator-main-state">
+
+                    <span class="operator-caption">
+                        TRẠNG THÁI MÁY HIỆN TẠI
+                    </span>
+
+                    {% if latest.status_label == "RUN" %}
+
+                    <h2 class="operator-state operator-state-run">
+                        ĐANG CHẠY
+                    </h2>
+
+                    <p>
+                        Máy đang thực hiện chu kỳ sản xuất bình thường.
+                    </p>
+
+                    {% elif latest.status_label == "STOP" %}
+
+                    <h2 class="operator-state operator-state-stop">
+                        ĐANG DỪNG
+                    </h2>
+
+                    <p>
+                        Máy đang dừng và chưa thực hiện chu kỳ mới.
+                    </p>
+
+                    {% elif latest.status_label == "ALARM" %}
+
+                    <h2 class="operator-state operator-state-alarm">
+                        CÓ CẢNH BÁO
+                    </h2>
+
+                    <p>
+                        Máy đang phát sinh cảnh báo.
+                        Cần kiểm tra mã lỗi {{ latest.alarm_code }}.
+                    </p>
+
+                    {% elif latest.status_label == "OFFLINE" %}
+
+                    <h2 class="operator-state operator-state-offline">
+                        MẤT KẾT NỐI
+                    </h2>
+
+                    <p>
+                        Hệ thống không nhận được dữ liệu mới từ PLC.
+                    </p>
+
+                    {% else %}
+
+                    <h2 class="operator-state operator-state-unknown">
+                        CHƯA XÁC ĐỊNH
+                    </h2>
+
+                    <p>
+                        Chưa xác định được trạng thái vận hành của máy.
+                    </p>
+
+                    {% endif %}
+
+                    <div class="operator-machine-name">
+                        {{ machine.code }} — {{ machine.name }}
+                    </div>
+
+                </div>
+
+
+                <div class="operator-info-grid">
+
+                    <article class="operator-info-card">
+
+                        <span class="operator-card-label">
+                            NGUỒN DỮ LIỆU
+                        </span>
+
+                        {% if latest.source == "MOCK" %}
+
+                        <strong class="operator-card-value value-blue">
+                            MÔ PHỎNG
+                        </strong>
+
+                        <p>
+                            Dữ liệu thử do Mock Collector tạo.
+                            Chưa kết nối PLC thật.
+                        </p>
+
+                        {% elif latest.plc_online %}
+
+                        <strong class="operator-card-value value-green">
+                            PLC TRỰC TUYẾN
+                        </strong>
+
+                        <p>
+                            Collector đang nhận dữ liệu từ KV-8000.
+                        </p>
+
+                        {% else %}
+
+                        <strong class="operator-card-value value-red">
+                            PLC MẤT KẾT NỐI
+                        </strong>
+
+                        <p>
+                            Collector không đọc được dữ liệu từ PLC.
+                        </p>
+
+                        {% endif %}
+
+                    </article>
+
+
+                    <article class="operator-info-card">
+
+                        <span class="operator-card-label">
+                            CẢNH BÁO
+                        </span>
+
+                        {% if latest.alarm_bit %}
+
+                        <strong class="operator-card-value value-red">
+                            CÓ CẢNH BÁO
+                        </strong>
+
+                        <p>
+                            Mã cảnh báo hiện tại:
+                            {{ latest.alarm_code }}
+                        </p>
+
+                        {% else %}
+
+                        <strong class="operator-card-value value-green">
+                            BÌNH THƯỜNG
+                        </strong>
+
+                        <p>
+                            Không có cảnh báo máy tại thời điểm này.
+                        </p>
+
+                        {% endif %}
+
+                    </article>
+
+
+                    <article class="operator-info-card">
+
+                        <span class="operator-card-label">
+                            DỮ LIỆU CẬP NHẬT LẦN CUỐI
+                        </span>
+
+                        <strong class="operator-card-value value-white">
+                            {{ latest.recorded_at|date:"H:i:s" }}
+                        </strong>
+
+                        <p>
+                            Ngày
+                            {{ latest.recorded_at|date:"d/m/Y" }}
+                        </p>
+
+                    </article>
+
+                </div>
+
+            </section>
+
+
+            <section class="simple-data-flow">
+
+                <div>
+                    <span>DỮ LIỆU ĐANG ĐI THEO LUỒNG</span>
+
+                    <strong>
+                        {% if latest.source == "MOCK" %}
+                            Bộ mô phỏng
+                        {% else %}
+                            PLC KV-8000
+                        {% endif %}
+                        → Python Collector
+                        → Database
+                        → Dashboard
+                    </strong>
+                </div>
+
+                <p>
+                    Trang Web chỉ nhận và hiển thị dữ liệu.
+                    Trang này không gửi lệnh điều khiển xuống máy.
+                </p>
+
+            </section>
+
+
+            <details class="engineering-details">
+
+                <summary>
+
+                    <span>
+                        Chi tiết kỹ thuật dành cho kỹ sư
+                    </span>
+
+                    <small>
+                        Xem địa chỉ MR, DM và giá trị thô
+                    </small>
+
+                </summary>
+
+                <div class="engineering-content">
+
+                    <div class="engineering-note">
+                        <strong>Mapping dữ liệu</strong>
+
+                        <p>
+                            Mapping là bảng quy định mỗi địa chỉ PLC
+                            đại diện cho thông tin nào của máy.
+                        </p>
+                    </div>
+
+                    <div class="table-container">
+
+                        <table id="historyTable">
+
+                            <thead>
+                            <tr>
+                                <th>Địa chỉ</th>
+                                <th>Kiểu dữ liệu</th>
+                                <th>Tín hiệu</th>
+                                <th>Giá trị gốc</th>
+                                <th>Giá trị hiển thị</th>
+                                <th>Công dụng</th>
+                            </tr>
+                            </thead>
+
+                            <tbody>
+
+                            {% for signal in signal_rows %}
+
+                            <tr>
+
+                                <td class="mono">
+                                    <strong>
+                                        {{ signal.address }}
+                                    </strong>
+                                </td>
+
+                                <td>
+                                    {{ signal.data_type }}
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        {{ signal.name }}
+                                    </strong>
+
+                                    <br>
+
+                                    <span class="technical-name">
+                                        {{ signal.technical_name }}
+                                    </span>
+                                </td>
+
+                                <td class="mono">
+                                    {{ signal.raw_value }}
+                                </td>
+
+                                <td>
+                                    <span
+                                        class="
+                                            signal-display
+                                            signal-display-{{ signal.state_class }}
+                                        "
+                                    >
+                                        {{ signal.display_value }}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    {{ signal.description }}
+                                </td>
+
+                            </tr>
+
+                            {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                    <div class="table-footer">
+                        <span>
+                            MR: tín hiệu chỉ có giá trị 0 hoặc 1
+                        </span>
+
+                        <span>
+                            DM: vùng nhớ chứa giá trị số
+                        </span>
+                    </div>
+
+                </div>
+
+            </details>
+
+
+            {% else %}
+
+            <section class="empty-state">
+
+                <h2>Chưa có dữ liệu để chẩn đoán</h2>
+
+                <p>
+                    Hãy chạy Collector hoặc kiểm tra kết nối
+                    cơ sở dữ liệu.
+                </p>
+
+            </section>
+
+            {% endif %}
+
+        </div>
+
+    </main>
+
+</div>
+
+</body>
+</html>
