@@ -20,23 +20,15 @@
         })();
     </script>
 
-    <link rel="stylesheet" href="{% static 'monitoring/dashboard.css' %}?v=20260813-config-final2">
-    <link rel="stylesheet" href="{% static 'monitoring/theme.css' %}?v=20260811-clean1">
+    <link rel="stylesheet" href="{% static 'monitoring/dashboard.css' %}?v=20260810-balanced3">
+    <link rel="stylesheet" href="{% static 'monitoring/theme.css' %}?v=20260810-balanced3">
     {% block extra_head %}{% endblock %}
 
-    <script src="{% static 'monitoring/dashboard.js' %}?v=20260813-stable1" defer></script>
+    <script src="{% static 'monitoring/dashboard.js' %}" defer></script>
 </head>
 <body
     data-auto-refresh-seconds="{{ auto_refresh_seconds|default:0 }}"
     data-page-key="{{ page_key }}"
-    {% if page_key == "overview" or page_key == "machine" %}
-    data-realtime-url="{% url 'monitoring:dashboard_state_api' %}"
-    data-realtime-stream-url="{% url 'monitoring:dashboard_state_stream' %}"
-    data-realtime-poll-ms="1000"
-    {% endif %}
-    {% if page_key == "machine" and machine %}
-    data-machine-detail-code="{{ machine.code }}"
-    {% endif %}
 >
 <div class="app-shell">
     <aside class="sidebar">
@@ -113,16 +105,6 @@
                 </span>
                 <span class="nav-arrow">›</span>
             </a>
-
-            <a class="nav-link {% if page_key == 'configuration' %}active{% endif %}"
-               href="{% url 'monitoring:configuration' %}">
-                <span class="nav-mark">06</span>
-                <span class="nav-copy">
-                    <strong>Cấu hình</strong>
-                    <small>Thêm PLC, máy và mapping</small>
-                </span>
-                <span class="nav-arrow">›</span>
-            </a>
         </nav>
 
         <section class="sidebar-status" aria-label="Trạng thái dịch vụ">
@@ -132,28 +114,19 @@
                 <strong class="status-ok"><i></i> ONLINE</strong>
             </div>
             <div class="sidebar-status-row">
-                <span>Môi trường</span><strong>{{ runtime_app_env|upper }}</strong>
+                <span>Môi trường</span><strong>DEV / TEST</strong>
             </div>
             <div class="sidebar-status-row">
-                <span>Cổng Web</span><strong>{{ runtime_web_port }}</strong>
+                <span>Cổng Web</span><strong>8001</strong>
             </div>
             <div class="sidebar-status-row">
-                <span>Database</span><strong>{{ runtime_db_engine|upper }}</strong>
+                <span>Database</span><strong>PostgreSQL</strong>
             </div>
         </section>
 
         <a class="admin-link" href="/admin/">
             <span>⚙</span> Mở trang quản trị
         </a>
-
-        {% if user.is_authenticated %}
-        <form method="post" action="{% url 'logout' %}" class="logout-form">
-            {% csrf_token %}
-            <button type="submit" class="admin-link">
-                <span>↪</span> Đăng xuất
-            </button>
-        </form>
-        {% endif %}
     </aside>
 
     <main class="main-area">
@@ -164,12 +137,7 @@
             </div>
 
             <div class="topbar-actions">
-                {% if page_key == "overview" or page_key == "machine" %}
-                <div class="header-data-block" title="Server push từ trạng thái PLC mới nhất">
-                    <span>Realtime</span>
-                    <strong><b id="realtimeIndicator">ĐANG KẾT NỐI</b> <small id="realtimeTransport">SSE</small></strong>
-                </div>
-                {% elif auto_refresh_seconds %}
+                {% if auto_refresh_seconds %}
                 <div class="header-data-block">
                     <span>Tự cập nhật</span>
                     <strong><b id="refreshCountdown">{{ auto_refresh_seconds }}</b> giây</strong>
@@ -207,18 +175,46 @@
         </header>
 
         <div class="page-content">
-            {% if messages %}
-            <div class="message-stack">
-                {% for message in messages %}
-                <div class="message-banner message-{{ message.tags|default:'info' }}">{{ message }}</div>
-                {% endfor %}
-            </div>
-            {% endif %}
             {% block content %}{% endblock %}
         </div>
     </main>
 </div>
 
+<script>
+(function () {
+    function initThemeToggle() {
+        const root = document.documentElement;
+        const btn = document.getElementById("themeToggle");
+        const icon = document.getElementById("themeToggleIcon");
+        const text = document.getElementById("themeToggleText");
+        if (!btn) return;
+
+        function sync() {
+            const dark = root.getAttribute("data-theme") === "dark";
+            if (icon) icon.textContent = dark ? "☀" : "◐";
+            if (text) text.textContent = dark ? "Sáng" : "Tối";
+            btn.setAttribute("aria-pressed", dark ? "true" : "false");
+        }
+
+        sync();
+
+        btn.addEventListener("click", function () {
+            const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+            root.setAttribute("data-theme", next);
+            try {
+                localStorage.setItem("machine-monitor-theme", next);
+            } catch (e) {}
+            sync();
+        });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initThemeToggle);
+    } else {
+        initThemeToggle();
+    }
+})();
+</script>
 
 {% block extra_script %}{% endblock %}
 </body>

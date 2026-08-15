@@ -6,27 +6,29 @@
         <span>ỨNG DỤNG WEB</span>
         <h2>Đang hoạt động</h2>
         <dl>
-            <div><dt>Địa chỉ DEV</dt><dd>127.0.0.1:8001</dd></div>
-            <div><dt>Database DEV</dt><dd>PostgreSQL</dd></div>
-            <div><dt>Môi trường</dt><dd>DEV / TEST</dd></div>
+            <div><dt>Môi trường</dt><dd>{{ app_env|upper }}</dd></div>
+            <div><dt>Database</dt><dd>{{ db_engine|upper }}</dd></div>
+            <div><dt>Máy active</dt><dd>{{ machines|length }}</dd></div>
         </dl>
     </article>
+
     <article class="system-card">
-        <span>PLC THẬT</span>
-        <h2>Chưa cấu hình</h2>
+        <span>PLC CONTROLLERS</span>
+        <h2>{{ controllers|length }} PLC đã cấu hình</h2>
         <dl>
-            <div><dt>IP PLC</dt><dd>Chờ xác nhận</dd></div>
-            <div><dt>Protocol</dt><dd>Chờ xác nhận</dd></div>
-            <div><dt>Port</dt><dd>Chờ xác nhận</dd></div>
+            <div><dt>Collector</dt><dd>Host Link TCP / read-only</dd></div>
+            <div><dt>Stale mặc định</dt><dd>{{ stale_after_seconds }} giây</dd></div>
+            <div><dt>Cấu hình</dt><dd>Django Admin</dd></div>
         </dl>
     </article>
+
     <article class="system-card">
-        <span>PHẠM VI</span>
-        <h2>{{ machines|length }} máy hoạt động</h2>
+        <span>NGUYÊN TẮC VẬN HÀNH</span>
+        <h2>PLC → Collector → DB → Web</h2>
         <dl>
-            <div><dt>Web port</dt><dd>8001</dd></div>
-            <div><dt>Warehouse port</dt><dd>8000</dd></div>
-            <div><dt>Database</dt><dd>Tách riêng</dd></div>
+            <div><dt>Ghi PLC</dt><dd>Không</dd></div>
+            <div><dt>Ghi DB</dt><dd>Khi đổi dữ liệu / heartbeat</dd></div>
+            <div><dt>Multi-PLC</dt><dd>Có</dd></div>
         </dl>
     </article>
 </section>
@@ -34,25 +36,62 @@
 <section class="panel">
     <div class="panel-head">
         <div>
-            <span>TRẠNG THÁI NGUỒN DỮ LIỆU</span>
-            <h2>Collector theo từng máy</h2>
-            <p>Dữ liệu quá 15 giây được đánh dấu gián đoạn để tránh hiển thị số cũ như dữ liệu realtime.</p>
+            <span>PLC VẬT LÝ</span>
+            <h2>Trạng thái từng controller</h2>
+            <p>Thông tin này được collector cập nhật trực tiếp vào database.</p>
         </div>
     </div>
     <div class="table-scroll">
         <table>
-            <thead><tr><th>Máy</th><th>Trạng thái</th><th>Nguồn</th><th>Bản ghi cuối</th><th>Độ trễ</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>PLC</th><th>Endpoint</th><th>Protocol</th><th>Poll</th>
+                    <th>Trạng thái</th><th>Last seen</th><th>Lỗi gần nhất</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for plc in controllers %}
+                <tr>
+                    <td><strong>{{ plc.code }}</strong><small>{{ plc.name }}</small></td>
+                    <td class="mono">{{ plc.host }}:{{ plc.port }}</td>
+                    <td>{{ plc.get_protocol_display }}</td>
+                    <td class="mono">{{ plc.poll_interval_ms }} ms</td>
+                    <td><span class="state-badge">{{ plc.health_label }}</span></td>
+                    <td class="mono">{% if plc.last_seen_at %}{{ plc.last_seen_at|date:"d/m/Y H:i:s" }}{% else %}—{% endif %}</td>
+                    <td>{% if plc.last_error %}{{ plc.last_error|truncatechars:120 }}{% else %}—{% endif %}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7" class="empty-row">Chưa có PLC. Vào /admin/ hoặc dùng lệnh bootstrap_plc để cấu hình.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span>TRẠNG THÁI NGUỒN DỮ LIỆU</span>
+            <h2>Collector theo từng máy</h2>
+            <p>Dữ liệu quá ngưỡng stale được đánh dấu gián đoạn để không hiển thị số cũ như realtime.</p>
+        </div>
+    </div>
+    <div class="table-scroll">
+        <table>
+            <thead><tr><th>Máy</th><th>PLC</th><th>Trạng thái</th><th>Nguồn</th><th>Bản ghi cuối</th><th>Độ trễ</th><th>Lỗi máy</th></tr></thead>
             <tbody>
             {% for item in snapshots %}
                 <tr>
                     <td><strong>{{ item.machine.code }}</strong><small>{{ item.machine.name }}</small></td>
+                    <td class="mono">{% if item.machine.controller %}{{ item.machine.controller.code }}{% else %}—{% endif %}</td>
                     <td><span class="state-badge state-{{ item.state }}">{{ item.state_label }}</span></td>
                     <td>{{ item.connection_label }}</td>
                     <td class="mono">{% if item.latest %}{{ item.latest.recorded_at|date:"d/m/Y H:i:s" }}{% else %}—{% endif %}</td>
                     <td class="mono">{% if item.age_seconds != None %}{{ item.age_seconds }} giây{% else %}—{% endif %}</td>
+                    <td>{% if item.latest.last_error %}{{ item.latest.last_error|truncatechars:120 }}{% else %}—{% endif %}</td>
                 </tr>
             {% empty %}
-                <tr><td colspan="5" class="empty-row">Chưa có máy.</td></tr>
+                <tr><td colspan="7" class="empty-row">Chưa có máy.</td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -61,22 +100,26 @@
 
 <details class="technical-panel" open>
     <summary>
-        <span><strong>Mapping DEV / TEST</strong><small>Địa chỉ đề xuất; phải xác nhận lại với chương trình PLC thật</small></span>
+        <span><strong>Mapping PLC thực tế</strong><small>Mỗi máy có mapping riêng; chỉnh trong Django Admin</small></span>
         <b>MỞ / ĐÓNG</b>
     </summary>
     <div class="technical-body">
         <div class="table-scroll">
             <table>
-                <thead><tr><th>Địa chỉ</th><th>Kiểu</th><th>Tên dữ liệu</th><th>Field database</th><th>Đơn vị</th></tr></thead>
+                <thead><tr><th>Máy</th><th>PLC</th><th>Signal</th><th>Địa chỉ</th><th>Kiểu</th><th>Scale</th><th>Offset</th></tr></thead>
                 <tbody>
-                {% for item in mapping %}
+                {% for item in mappings %}
                     <tr>
+                        <td><strong>{{ item.machine.code }}</strong></td>
+                        <td class="mono">{% if item.machine.controller %}{{ item.machine.controller.code }}{% else %}—{% endif %}</td>
+                        <td>{{ item.get_signal_display }}</td>
                         <td class="mono">{{ item.address }}</td>
                         <td>{{ item.data_type }}</td>
-                        <td><strong>{{ item.name }}</strong><small>{{ item.technical_name }}</small></td>
-                        <td class="mono">{{ item.field }}</td>
-                        <td>{{ item.unit }}</td>
+                        <td class="mono">{{ item.scale }}</td>
+                        <td class="mono">{{ item.offset }}</td>
                     </tr>
+                {% empty %}
+                    <tr><td colspan="7" class="empty-row">Chưa có SignalMapping.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

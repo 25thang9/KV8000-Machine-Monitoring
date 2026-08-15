@@ -1,92 +1,501 @@
 {% extends "monitoring/base.html" %}
 
 {% block content %}
-<section class="filter-panel">
-    <div class="filter-intro">
-        <span>BỘ LỌC</span>
-        <h2>Tra cứu dữ liệu máy</h2>
-        <p>Mặc định hiển thị 50 bản ghi mỗi trang; có thể chọn 25, 50 hoặc 100.</p>
-    </div>
-    <form method="get" class="filter-grid">
-        <label>Máy
-            <select name="machine">
-                {% for item in machines %}
-                <option value="{{ item.code }}" {% if machine and item.code == machine.code %}selected{% endif %}>{{ item.code }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label>Trạng thái
-            <select name="status">
-                <option value="">Tất cả</option>
-                <option value="RUN" {% if selected_status == 'RUN' %}selected{% endif %}>Đang chạy</option>
-                <option value="STOP" {% if selected_status == 'STOP' %}selected{% endif %}>Đang dừng</option>
-                <option value="ALARM" {% if selected_status == 'ALARM' %}selected{% endif %}>Cảnh báo</option>
-                <option value="OFFLINE" {% if selected_status == 'OFFLINE' %}selected{% endif %}>PLC Offline</option>
-            </select>
-        </label>
-        <label>Nguồn
-            <select name="source">
-                <option value="">Tất cả</option>
-                <option value="MOCK" {% if selected_source == 'MOCK' %}selected{% endif %}>Mô phỏng</option>
-                <option value="PLC" {% if selected_source == 'PLC' %}selected{% endif %}>PLC thật</option>
-            </select>
-        </label>
-        <label>Từ ngày<input type="date" name="date_from" value="{{ date_from_value }}"></label>
-        <label>Đến ngày<input type="date" name="date_to" value="{{ date_to_value }}"></label>
-        <label>Số dòng
-            <select name="page_size">
-                <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
-                <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
-                <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
-            </select>
-        </label>
-        <div class="filter-actions">
-            <button class="button primary-button" type="submit">Áp dụng</button>
-            <a class="button" href="{% url 'monitoring:history' %}">Xóa lọc</a>
-            <button class="button success-button" type="submit" name="export" value="csv">Xuất CSV</button>
-        </div>
-    </form>
-</section>
 
-<section class="summary-strip history-summary">
-    <article><span>Tổng bản ghi</span><strong>{{ counters.total }}</strong></article>
-    <article class="summary-run"><span>Đang chạy</span><strong>{{ counters.run }}</strong></article>
-    <article class="summary-stop"><span>Đang dừng</span><strong>{{ counters.stop }}</strong></article>
-    <article class="summary-alarm"><span>Cảnh báo</span><strong>{{ counters.alarm }}</strong></article>
-</section>
+<div class="history-page">
 
-<section class="panel">
-    <div class="panel-head">
-        <div>
-            <span>KẾT QUẢ TRA CỨU</span>
-            <h2>{% if machine %}{{ machine.code }} — {{ machine.name }}{% else %}Chưa có máy{% endif %}</h2>
-            <p>Mỗi dòng là một lần Collector ghi dữ liệu vào database.</p>
+    <!-- =====================================================
+         BỘ LỌC
+         ===================================================== -->
+    <section class="history-filter-panel">
+
+        <div class="history-filter-title">
+            <span>TRA CỨU DỮ LIỆU</span>
+            <h2>Lọc lịch sử vận hành</h2>
+            <p>
+                Chọn máy, trạng thái, nguồn dữ liệu hoặc khoảng thời gian cần xem.
+            </p>
         </div>
-        <strong class="current-value">Trang {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</strong>
-    </div>
-    <div class="table-scroll">
-        <table>
-            <thead>
-                <tr><th>Thời gian</th><th>Trạng thái</th><th>Chế độ</th><th>Sản lượng</th><th>Cycle Time</th><th>Alarm</th><th>Recipe</th><th>Nguồn</th></tr>
-            </thead>
-            <tbody>
-            {% for reading in page_obj %}
-                <tr>
-                    <td class="mono">{{ reading.recorded_at|date:"d/m/Y H:i:s" }}</td>
-                    <td><span class="state-badge state-{{ reading.status_label|lower }}">{{ reading.status_label }}</span></td>
-                    <td>{% if reading.auto_mode_bit %}Tự động{% else %}Thủ công{% endif %}</td>
-                    <td class="mono">{{ reading.production_count }}</td>
-                    <td class="mono">{{ reading.cycle_time_ms|default:"—" }} ms</td>
-                    <td class="mono">{{ reading.alarm_code }}</td>
-                    <td class="mono">{{ reading.recipe_no }}</td>
-                    <td>{{ reading.source }}</td>
-                </tr>
-            {% empty %}
-                <tr><td colspan="8" class="empty-row">Không có dữ liệu phù hợp với bộ lọc.</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% include "monitoring/pagination.html" %}
-</section>
+
+        <form method="get" class="history-filter-form">
+
+            <label>
+                <span>Máy</span>
+
+                <select name="machine">
+                    {% for item in machines %}
+                    <option
+                        value="{{ item.code }}"
+                        {% if machine and item.code == machine.code %}selected{% endif %}
+                    >
+                        {{ item.code }} — {{ item.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+
+
+            <label>
+                <span>Trạng thái</span>
+
+                <select name="status">
+                    <option value="">Tất cả</option>
+
+                    <option value="RUN"
+                        {% if selected_status == "RUN" %}selected{% endif %}
+                    >
+                        Đang chạy
+                    </option>
+
+                    <option value="STOP"
+                        {% if selected_status == "STOP" %}selected{% endif %}
+                    >
+                        Đang dừng
+                    </option>
+
+                    <option value="ALARM"
+                        {% if selected_status == "ALARM" %}selected{% endif %}
+                    >
+                        Cảnh báo
+                    </option>
+
+                    <option value="OFFLINE"
+                        {% if selected_status == "OFFLINE" %}selected{% endif %}
+                    >
+                        Mất kết nối
+                    </option>
+                </select>
+            </label>
+
+
+            <label>
+                <span>Từ ngày</span>
+
+                <input
+                    type="date"
+                    name="date_from"
+                    value="{{ date_from_value }}"
+                >
+            </label>
+
+
+            <label>
+                <span>Đến ngày</span>
+
+                <input
+                    type="date"
+                    name="date_to"
+                    value="{{ date_to_value }}"
+                >
+            </label>
+
+
+            <label>
+                <span>Số dòng / trang</span>
+
+                <select name="page_size">
+                    <option value="25"
+                        {% if page_size == 25 %}selected{% endif %}
+                    >
+                        25 dòng
+                    </option>
+
+                    <option value="50"
+                        {% if page_size == 50 %}selected{% endif %}
+                    >
+                        50 dòng
+                    </option>
+
+                    <option value="100"
+                        {% if page_size == 100 %}selected{% endif %}
+                    >
+                        100 dòng
+                    </option>
+                </select>
+            </label>
+
+
+            <div class="history-filter-actions">
+
+                <button
+                    type="submit"
+                    class="button primary-button"
+                >
+                    Áp dụng bộ lọc
+                </button>
+
+                <a
+                    href="{% url 'monitoring:history' %}"
+                    class="button secondary-button"
+                >
+                    Xóa lọc
+                </a>
+
+                {% if query_string %}
+                <a
+                    href="?{{ query_string }}&export=csv"
+                    class="button success-button"
+                >
+                    Xuất CSV
+                </a>
+                {% else %}
+                <a
+                    href="?export=csv"
+                    class="button success-button"
+                >
+                    Xuất CSV
+                </a>
+                {% endif %}
+
+            </div>
+
+        </form>
+
+    </section>
+
+
+    <!-- =====================================================
+         THỐNG KÊ
+         ===================================================== -->
+    <section class="history-stat-grid">
+
+        <article class="history-stat history-stat-total">
+
+            <div class="history-stat-icon">
+                DB
+            </div>
+
+            <div>
+                <span>Tổng bản ghi</span>
+                <strong>{{ counters.total }}</strong>
+            </div>
+
+        </article>
+
+
+        <article class="history-stat history-stat-run">
+
+            <span class="history-stat-dot"></span>
+
+            <div>
+                <span>Đang chạy</span>
+                <strong>{{ counters.run }}</strong>
+            </div>
+
+        </article>
+
+
+        <article class="history-stat history-stat-stop">
+
+            <span class="history-stat-dot"></span>
+
+            <div>
+                <span>Đang dừng</span>
+                <strong>{{ counters.stop }}</strong>
+            </div>
+
+        </article>
+
+
+        <article class="history-stat history-stat-alarm">
+
+            <span class="history-stat-dot"></span>
+
+            <div>
+                <span>Cảnh báo</span>
+                <strong>{{ counters.alarm }}</strong>
+            </div>
+
+        </article>
+
+    </section>
+
+
+    <!-- =====================================================
+         BẢNG KẾT QUẢ
+         ===================================================== -->
+    <section class="history-result-window">
+
+        <header class="history-window-title">
+
+            <div>
+                <span>KẾT QUẢ TRA CỨU</span>
+
+                <h2>
+                    {% if machine %}
+                        {{ machine.code }} — {{ machine.name }}
+                    {% else %}
+                        Dữ liệu máy
+                    {% endif %}
+                </h2>
+
+                <p>
+                    Mỗi dòng là một bản ghi được Data Collector lưu vào cơ sở dữ liệu.
+                </p>
+            </div>
+
+
+            <div class="history-page-number">
+
+                <span>TRANG</span>
+
+                <strong>
+                    {{ page_obj.number }}
+                    /
+                    {{ page_obj.paginator.num_pages }}
+                </strong>
+
+            </div>
+
+        </header>
+
+
+        <div class="history-table-scroll">
+
+            <table class="history-table">
+
+                <thead>
+                    <tr>
+                        <th>Thời gian</th>
+
+                        <th>Trạng thái</th>
+
+                        <th>Chế độ</th>
+
+                        <th>Sản lượng</th>
+
+                        <th>Cycle Time</th>
+
+                        <th>Alarm</th>
+
+                        <th>Recipe</th>
+
+                        <th>Nguồn</th>
+                    </tr>
+                </thead>
+
+
+                <tbody>
+
+                    {% for item in page_obj %}
+
+                    <tr>
+
+                        <td class="history-time">
+                            {{ item.recorded_at|date:"d/m/Y H:i:s" }}
+                        </td>
+
+
+                        <td>
+
+                            {% if item.alarm_bit %}
+
+                            <span class="history-status history-status-alarm">
+                                CẢNH BÁO
+                            </span>
+
+                            {% elif item.run_bit %}
+
+                            <span class="history-status history-status-run">
+                                ĐANG CHẠY
+                            </span>
+
+                            {% elif item.stop_bit %}
+
+                            <span class="history-status history-status-stop">
+                                ĐANG DỪNG
+                            </span>
+
+                            {% else %}
+
+                            <span class="history-status history-status-unknown">
+                                KHÔNG XÁC ĐỊNH
+                            </span>
+
+                            {% endif %}
+
+                        </td>
+
+
+                        <td>
+
+                            {% if item.auto_mode_bit %}
+
+                                Tự động
+
+                            {% else %}
+
+                                Thủ công
+
+                            {% endif %}
+
+                        </td>
+
+
+                        <td class="history-number">
+
+                            {{ item.production_count }}
+
+                        </td>
+
+
+                        <td class="history-number">
+
+                            {% if item.cycle_time_ms %}
+
+                                {{ item.cycle_time_ms }}
+                                <small>ms</small>
+
+                            {% else %}
+
+                                —
+
+                            {% endif %}
+
+                        </td>
+
+
+                        <td>
+
+                            {% if item.alarm_code %}
+
+                            <strong class="history-alarm-code">
+                                {{ item.alarm_code }}
+                            </strong>
+
+                            {% else %}
+
+                                0
+
+                            {% endif %}
+
+                        </td>
+
+
+                        <td>
+
+                            {{ item.recipe_no|default:"—" }}
+
+                        </td>
+
+
+                        <td>
+
+                            <span class="history-source source-plc">
+                                PLC
+                            </span>
+
+                        </td>
+
+                    </tr>
+
+
+                    {% empty %}
+
+                    <tr>
+                        <td
+                            colspan="8"
+                            class="history-empty"
+                        >
+                            Không tìm thấy dữ liệu phù hợp với bộ lọc.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+
+        <!-- =================================================
+             PHÂN TRANG
+             ================================================= -->
+        <footer class="history-pagination">
+
+            <div>
+
+                Hiển thị
+
+                <strong>
+                    {{ page_obj|length }}
+                </strong>
+
+                bản ghi trên trang này
+
+            </div>
+
+
+            <nav>
+
+                {% if page_obj.has_previous %}
+
+                    {% if query_string %}
+
+                    <a href="?{{ query_string }}&page=1">
+                        « Đầu
+                    </a>
+
+                    <a href="?{{ query_string }}&page={{ page_obj.previous_page_number }}">
+                        ‹ Trước
+                    </a>
+
+                    {% else %}
+
+                    <a href="?page=1">
+                        « Đầu
+                    </a>
+
+                    <a href="?page={{ page_obj.previous_page_number }}">
+                        ‹ Trước
+                    </a>
+
+                    {% endif %}
+
+                {% endif %}
+
+
+                <span class="history-current-page">
+
+                    {{ page_obj.number }}
+
+                </span>
+
+
+                {% if page_obj.has_next %}
+
+                    {% if query_string %}
+
+                    <a href="?{{ query_string }}&page={{ page_obj.next_page_number }}">
+                        Sau ›
+                    </a>
+
+                    <a href="?{{ query_string }}&page={{ page_obj.paginator.num_pages }}">
+                        Cuối »
+                    </a>
+
+                    {% else %}
+
+                    <a href="?page={{ page_obj.next_page_number }}">
+                        Sau ›
+                    </a>
+
+                    <a href="?page={{ page_obj.paginator.num_pages }}">
+                        Cuối »
+                    </a>
+
+                    {% endif %}
+
+                {% endif %}
+
+            </nav>
+
+        </footer>
+
+    </section>
+
+</div>
+
 {% endblock %}

@@ -1,76 +1,510 @@
 {% extends "monitoring/base.html" %}
 
 {% block content %}
+
+<!-- =========================================================
+     CHỌN PHẠM VI MÁY
+     ========================================================= -->
+
 <section class="machine-selector-bar">
+
     <form method="get">
-        <label for="alarmMachine">Lọc theo máy</label>
-        <select id="alarmMachine" name="machine" onchange="this.form.submit()">
+
+        <label for="machine-select">
+            PHẠM VI CẢNH BÁO
+        </label>
+
+        <select
+            id="machine-select"
+            name="machine"
+            onchange="this.form.submit()"
+        >
+
+            <option
+                value=""
+                {% if not machine %}selected{% endif %}
+            >
+                TẤT CẢ MÁY
+            </option>
+
             {% for item in machines %}
-            <option value="{{ item.code }}" {% if machine and item.code == machine.code %}selected{% endif %}>
+
+            <option
+                value="{{ item.code }}"
+                {% if machine and item.code == machine.code %}selected{% endif %}
+            >
                 {{ item.code }} — {{ item.name }}
             </option>
+
             {% endfor %}
+
         </select>
+
     </form>
-    <div class="page-note">Cảnh báo được tổng hợp từ các bản ghi có Alarm = ON.</div>
+
+
+    <div class="selector-note">
+
+        {% if machine %}
+
+            <strong>
+                Đang xem: {{ machine.code }}
+            </strong>
+
+            <span>
+                Chỉ hiển thị cảnh báo của {{ machine.name }}
+            </span>
+
+        {% else %}
+
+            <strong>
+                Đang xem: TẤT CẢ MÁY
+            </strong>
+
+            <span>
+                Ưu tiên phát hiện sự cố trên toàn hệ thống
+            </span>
+
+        {% endif %}
+
+    </div>
+
 </section>
 
-<section class="section-heading compact-heading">
-    <div>
-        <span>CẢNH BÁO ĐANG HOẠT ĐỘNG</span>
-        <h2>Cần kiểm tra ngay</h2>
-    </div>
-    <strong class="count-badge danger-count">{{ current_active|length }}</strong>
+
+
+<!-- =========================================================
+     TỔNG HỢP CẢNH BÁO
+     ========================================================= -->
+
+<section class="alarm-summary-grid">
+
+    <article class="alarm-summary-card">
+
+        <span>
+            CẢNH BÁO ĐANG HOẠT ĐỘNG
+        </span>
+
+        <strong>
+            {{ current_active|length }}
+        </strong>
+
+        <small>
+            máy cần kiểm tra
+        </small>
+
+    </article>
+
+
+    <article class="alarm-summary-card history-event-card">
+
+        <span>
+            LỊCH SỬ SỰ KIỆN
+        </span>
+
+        <strong>
+            {{ page_obj.paginator.count }}
+        </strong>
+
+        <small>
+            sự kiện đã ghi nhận
+        </small>
+
+    </article>
+
+
+    <article class="alarm-explain-card">
+
+        {% if current_active %}
+
+            <strong>
+                ⚠ Có máy đang báo lỗi
+            </strong>
+
+            <p>
+                Ưu tiên kiểm tra các máy hiển thị bên dưới.
+                Bấm trực tiếp vào máy để mở màn hình chi tiết.
+            </p>
+
+        {% else %}
+
+            <strong>
+                Hệ thống chưa có Alarm đang hoạt động
+            </strong>
+
+            <p>
+                Không phát hiện tín hiệu Alarm trong dữ liệu mới nhất
+                của phạm vi đang xem.
+            </p>
+
+        {% endif %}
+
+    </article>
+
 </section>
+
+
+
+<!-- =========================================================
+     ALARM ĐANG HOẠT ĐỘNG
+     ========================================================= -->
+
+<section class="section-heading alarm-heading">
+
+    <div>
+
+        <span>
+            ƯU TIÊN XỬ LÝ
+        </span>
+
+        <h2>
+            Cảnh báo đang hoạt động
+        </h2>
+
+        <p>
+            Bấm trực tiếp vào máy để xem trạng thái,
+            tín hiệu PLC và dữ liệu vận hành.
+        </p>
+
+    </div>
+
+</section>
+
+
 
 <div class="active-alarm-list">
+
     {% for item in current_active %}
-    <a href="{% url 'monitoring:machine_detail' item.machine.code %}" class="active-alarm-card">
+
+    <a
+        href="{% url 'monitoring:machine_detail' item.machine.code %}"
+        class="active-alarm-card"
+        style="text-decoration: none; color: inherit;"
+    >
+
         <span class="alarm-pulse"></span>
+
+
         <div>
-            <strong>{{ item.machine.code }} — Mã lỗi {{ item.latest.alarm_code }}</strong>
-            <small>{{ item.machine.name }} · cập nhật {{ item.age_seconds }} giây trước</small>
+
+            <strong>
+                {{ item.machine.code }}
+                —
+                {% if item.latest and item.latest.alarm_bit %}
+                    Mã lỗi {{ item.latest.alarm_code }}
+                {% else %}
+                    RUN/STOP bất thường
+                {% endif %}
+            </strong>
+
+
+            <small>
+
+                {{ item.machine.name }}
+
+                {% if item.age_seconds != None %}
+
+                    · cập nhật
+                    {{ item.age_seconds }}
+                    giây trước
+
+                {% endif %}
+
+            </small>
+
         </div>
-        <b>Xem máy →</b>
+
+
+        <b>
+            XEM MÁY →
+        </b>
+
     </a>
+
+
     {% empty %}
-    <div class="normal-banner">
-        <strong>Không có cảnh báo đang hoạt động</strong>
-        <span>Các máy hiện không báo Alarm trong bản ghi mới nhất.</span>
+
+    <div class="normal-banner large-normal-banner">
+
+        <span class="normal-check">
+            ✓
+        </span>
+
+        <div>
+
+            <strong>
+                Không có cảnh báo đang hoạt động
+            </strong>
+
+            <span>
+                Các máy trong phạm vi hiện tại
+                không báo Alarm trong bản ghi mới nhất.
+            </span>
+
+        </div>
+
     </div>
+
     {% endfor %}
+
 </div>
 
-<section class="panel">
+
+
+<!-- =========================================================
+     LỊCH SỬ CẢNH BÁO
+     ========================================================= -->
+
+<article class="panel alarm-history-panel">
+
     <div class="panel-head">
+
         <div>
-            <span>LỊCH SỬ CẢNH BÁO</span>
-            <h2>Các lần cảnh báo đã ghi nhận</h2>
-            <p>Các mẫu liên tiếp cùng mã trong khoảng ngắn được gộp thành một sự kiện.</p>
+
+            <span>
+                ALARM HISTORY
+            </span>
+
+            <h2>
+                Lịch sử cảnh báo
+            </h2>
+
+            <p>
+
+                {% if machine %}
+
+                    Các sự kiện của {{ machine.code }}
+
+                {% else %}
+
+                    Các sự kiện của toàn bộ máy
+
+                {% endif %}
+
+            </p>
+
         </div>
-        <strong class="current-value">{{ page_obj.paginator.count }} sự kiện</strong>
+
     </div>
-    <div class="table-scroll">
+
+
+    <div class="table-wrap">
+
         <table>
+
             <thead>
-                <tr><th>Bắt đầu</th><th>Kết thúc</th><th>Máy</th><th>Mã lỗi</th><th>Số mẫu</th><th>Nguồn</th></tr>
-            </thead>
-            <tbody>
-            {% for event in page_obj %}
+
                 <tr>
-                    <td class="mono">{{ event.started_at|date:"d/m/Y H:i:s" }}</td>
-                    <td class="mono">{{ event.ended_at|date:"d/m/Y H:i:s" }}</td>
-                    <td><strong>{{ event.machine_code }}</strong><small>{{ event.machine_name }}</small></td>
-                    <td><span class="value-chip value-alarm">{{ event.alarm_code }}</span></td>
-                    <td class="mono">{{ event.samples }}</td>
-                    <td>{{ event.source }}</td>
+
+                    <th>
+                        Máy
+                    </th>
+
+                    <th>
+                        Mã lỗi
+                    </th>
+
+                    <th>
+                        Bắt đầu
+                    </th>
+
+                    <th>
+                        Kết thúc
+                    </th>
+
+                    <th>
+                        Thời lượng
+                    </th>
+
+                    <th>
+                        Số mẫu
+                    </th>
+
+                    <th>
+                        Nguồn
+                    </th>
+
+                    <th>
+                        Kiểm tra
+                    </th>
+
                 </tr>
-            {% empty %}
-                <tr><td colspan="6" class="empty-row">Chưa có lịch sử cảnh báo.</td></tr>
-            {% endfor %}
+
+            </thead>
+
+
+            <tbody>
+
+                {% for event in page_obj %}
+
+                <tr>
+
+                    <td>
+
+                        <strong>
+                            {{ event.machine_code }}
+                        </strong>
+
+                        <br>
+
+                        <small>
+                            {{ event.machine_name }}
+                        </small>
+
+                    </td>
+
+
+                    <td>
+
+                        <strong>
+                            {{ event.alarm_code }}
+                        </strong>
+
+                    </td>
+
+
+                    <td>
+                        {{ event.started_at|date:"H:i:s d/m/Y" }}
+                    </td>
+
+
+                    <td>
+                        {% if event.is_active %}
+                            <strong>ĐANG HOẠT ĐỘNG</strong>
+                        {% elif event.ended_at %}
+                            {{ event.ended_at|date:"H:i:s d/m/Y" }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {{ event.duration_text }}
+                    </td>
+
+                    <td>
+                        {{ event.samples }}
+                    </td>
+
+
+                    <td>
+                        {{ event.source }}
+                    </td>
+
+
+                    <td>
+
+                        <a
+                            class="button"
+                            href="{% url 'monitoring:machine_detail' event.machine_code %}"
+                        >
+                            Xem máy
+                        </a>
+
+                    </td>
+
+                </tr>
+
+
+                {% empty %}
+
+                <tr>
+
+                    <td
+                        colspan="8"
+                        class="empty-row"
+                    >
+
+                        Chưa có lịch sử cảnh báo
+                        trong phạm vi đang chọn.
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
             </tbody>
+
         </table>
+
     </div>
-    {% include "monitoring/pagination.html" %}
-</section>
+
+
+
+    <!-- =====================================================
+         PHÂN TRANG
+         ===================================================== -->
+
+    {% if page_obj.paginator.num_pages > 1 %}
+
+    <div class="pagination">
+
+        {% if page_obj.has_previous %}
+
+            {% if machine %}
+
+            <a
+                href="?machine={{ machine.code }}&page={{ page_obj.previous_page_number }}"
+            >
+                ← Trang trước
+            </a>
+
+            {% else %}
+
+            <a
+                href="?page={{ page_obj.previous_page_number }}"
+            >
+                ← Trang trước
+            </a>
+
+            {% endif %}
+
+        {% endif %}
+
+
+
+        <span>
+
+            Trang
+            <strong>
+                {{ page_obj.number }}
+            </strong>
+
+            /
+            {{ page_obj.paginator.num_pages }}
+
+        </span>
+
+
+
+        {% if page_obj.has_next %}
+
+            {% if machine %}
+
+            <a
+                href="?machine={{ machine.code }}&page={{ page_obj.next_page_number }}"
+            >
+                Trang sau →
+            </a>
+
+            {% else %}
+
+            <a
+                href="?page={{ page_obj.next_page_number }}"
+            >
+                Trang sau →
+            </a>
+
+            {% endif %}
+
+        {% endif %}
+
+    </div>
+
+    {% endif %}
+
+</article>
+
+
 {% endblock %}

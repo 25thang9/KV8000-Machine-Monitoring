@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'monitoring/overview.css' %}?v=20260813-stable1">
+<link rel="stylesheet" href="{% static 'monitoring/overview.css' %}?v=20260810-balanced3">
 {% endblock %}
 
 {% block content %}
@@ -12,15 +12,15 @@
         <article class="pro-kpi pro-kpi-total">
             <div class="pro-kpi-head"><span>Tổng số máy</span><i></i></div>
             <div class="pro-kpi-body">
-                <strong id="kpiTotal">{{ summary.total }}</strong>
-                <span id="kpiTotalNote">{% if summary.unknown %}{{ summary.unknown }} chưa xác định{% else %}máy đang cấu hình{% endif %}</span>
+                <strong>{{ summary.total }}</strong>
+                <span>máy đang cấu hình</span>
             </div>
         </article>
 
         <article class="pro-kpi pro-kpi-run">
             <div class="pro-kpi-head"><span>Đang chạy</span><i></i></div>
             <div class="pro-kpi-body">
-                <strong id="kpiRun">{{ summary.run }}</strong>
+                <strong>{{ summary.run }}</strong>
                 <span>vận hành bình thường</span>
             </div>
         </article>
@@ -28,7 +28,7 @@
         <article class="pro-kpi pro-kpi-stop">
             <div class="pro-kpi-head"><span>Đang dừng</span><i></i></div>
             <div class="pro-kpi-body">
-                <strong id="kpiStop">{{ summary.stop }}</strong>
+                <strong>{{ summary.stop }}</strong>
                 <span>chưa thực hiện chu kỳ</span>
             </div>
         </article>
@@ -36,7 +36,7 @@
         <article class="pro-kpi pro-kpi-alarm">
             <div class="pro-kpi-head"><span>Cảnh báo</span><i></i></div>
             <div class="pro-kpi-body">
-                <strong id="kpiAlarm">{{ summary.alarm }}</strong>
+                <strong>{{ summary.alarm }}</strong>
                 <span>máy cần kiểm tra</span>
             </div>
         </article>
@@ -44,14 +44,14 @@
         <article class="pro-kpi pro-kpi-offline">
             <div class="pro-kpi-head"><span>Mất dữ liệu</span><i></i></div>
             <div class="pro-kpi-body">
-                <strong id="kpiOffline">{{ summary.offline }}</strong>
-                <span>dữ liệu không khả dụng</span>
+                <strong>{{ summary.offline }}</strong>
+                <span>Collector không cập nhật</span>
             </div>
         </article>
     </section>
 
     {% if active_alarms %}
-    <section id="systemNotice" class="pro-notice pro-notice-alarm">
+    <section class="pro-notice pro-notice-alarm">
         <span class="pro-notice-icon">!</span>
         <div>
             <strong>{{ active_alarms|length }} máy đang phát sinh cảnh báo</strong>
@@ -60,7 +60,7 @@
         <a href="{% url 'monitoring:alarms' %}">Xem cảnh báo <b>→</b></a>
     </section>
     {% elif summary.offline %}
-    <section id="systemNotice" class="pro-notice pro-notice-warning">
+    <section class="pro-notice pro-notice-warning">
         <span class="pro-notice-icon">!</span>
         <div>
             <strong>{{ summary.offline }} máy đang mất dữ liệu</strong>
@@ -68,17 +68,8 @@
         </div>
         <a href="{% url 'monitoring:system' %}">Chẩn đoán <b>→</b></a>
     </section>
-    {% elif summary.unknown %}
-    <section id="systemNotice" class="pro-notice pro-notice-warning">
-        <span class="pro-notice-icon">?</span>
-        <div>
-            <strong>{{ summary.unknown }} máy có trạng thái chưa xác định</strong>
-            <span>Dữ liệu vẫn đến nhưng tín hiệu RUN/STOP chưa tạo thành trạng thái hợp lệ.</span>
-        </div>
-        <a href="{% url 'monitoring:system' %}">Chẩn đoán <b>→</b></a>
-    </section>
     {% else %}
-    <section id="systemNotice" class="pro-notice pro-notice-ok">
+    <section class="pro-notice pro-notice-ok">
         <span class="pro-notice-icon">✓</span>
         <div>
             <strong>Hệ thống đang cập nhật bình thường</strong>
@@ -97,7 +88,7 @@
                     <span>Tình trạng máy</span>
                     <small>Trạng thái và dữ liệu vận hành mới nhất</small>
                 </div>
-                <strong id="machineTableCount">{{ summary.total }} máy</strong>
+                <strong>{{ summary.total }} máy</strong>
             </header>
 
             <div class="pro-machine-table-head">
@@ -113,7 +104,6 @@
             <div class="pro-machine-table-body">
                 {% for item in snapshots %}
                 <a class="pro-machine-row pro-machine-{{ item.state }}"
-                   data-machine-code="{{ item.machine.code }}"
                    href="{% url 'monitoring:machine_detail' item.machine.code %}">
                     <span class="pro-row-rail"></span>
 
@@ -126,7 +116,7 @@
                     </div>
 
                     <div>
-                        <span class="pro-state-badge pro-state-{{ item.state }}" data-role="state-badge">{{ item.state_label }}</span>
+                        <span class="pro-state-badge pro-state-{{ item.state }}">{{ item.state_label }}</span>
                         {% if item.state == "alarm" and item.latest %}
                         <small class="pro-inline-alarm">Mã {{ item.latest.alarm_code }}</small>
                         {% endif %}
@@ -134,23 +124,23 @@
 
                     <div class="pro-data-cell">
                         {% if item.latest %}
-                        <strong data-role="production-count">{{ item.latest.production_count }}</strong><small>sp</small>
-                        {% else %}<strong data-role="production-count">—</strong>{% endif %}
+                        <strong>{{ item.latest.production_count }}</strong><small>sp</small>
+                        {% else %}<strong>—</strong>{% endif %}
                     </div>
 
                     <div class="pro-data-cell">
                         {% if item.latest and item.state != "offline" %}
-                        <strong data-role="cycle-time">{{ item.latest.cycle_time_ms|default_if_none:"—" }}</strong><small>ms</small>
-                        {% else %}<strong data-role="cycle-time">—</strong><small>dữ liệu cũ</small>{% endif %}
+                        <strong>{{ item.latest.cycle_time_ms|default:"—" }}</strong><small>ms</small>
+                        {% else %}<strong>—</strong><small>dữ liệu cũ</small>{% endif %}
                     </div>
 
-                    <div class="pro-mode-cell" data-role="mode">
+                    <div class="pro-mode-cell">
                         {% if item.latest %}
                             {% if item.latest.auto_mode_bit %}AUTO{% else %}MANUAL{% endif %}
                         {% else %}—{% endif %}
                     </div>
 
-                    <div class="pro-age-cell" data-role="age">
+                    <div class="pro-age-cell">
                         {% if item.age_seconds != None %}
                         <strong>{{ item.age_seconds }}s</strong>
                         <small>{% if item.state == "offline" %}chưa cập nhật{% else %}trước{% endif %}</small>
@@ -169,12 +159,12 @@
             <header class="pro-window-caption">
                 <div>
                     <span>Cần chú ý</span>
-                    <small>Alarm, mất dữ liệu và trạng thái chưa xác định</small>
+                    <small>Alarm và máy mất dữ liệu</small>
                 </div>
-                <strong id="attentionCount">{{ summary.alarm|add:summary.offline|add:summary.unknown }}</strong>
+                <strong>{{ summary.alarm|add:summary.offline }}</strong>
             </header>
 
-            <div class="pro-attention-list" id="attentionList" aria-live="polite">
+            <div class="pro-attention-list">
                 {% for item in snapshots %}
                     {% if item.state == "alarm" %}
                     <a class="pro-attention-item attention-alarm"
@@ -205,23 +195,7 @@
                     {% endif %}
                 {% endfor %}
 
-
-                {% for item in snapshots %}
-                    {% if item.state == "unknown" %}
-                    <a class="pro-attention-item attention-unknown"
-                       href="{% url 'monitoring:machine_detail' item.machine.code %}">
-                        <span class="pro-attention-icon">?</span>
-                        <div>
-                            <strong>{{ item.machine.code }}</strong>
-                            <span>Trạng thái chưa xác định</span>
-                            <small>Dữ liệu có nhưng tín hiệu RUN/STOP chưa hợp lệ</small>
-                        </div>
-                        <b>›</b>
-                    </a>
-                    {% endif %}
-                {% endfor %}
-
-                {% if not summary.alarm and not summary.offline and not summary.unknown %}
+                {% if not summary.alarm and not summary.offline %}
                 <div class="pro-attention-clear">
                     <span>✓</span>
                     <strong>Không có sự cố cần xử lý</strong>
@@ -238,54 +212,31 @@
     </section>
 
     <section class="pro-workspace">
-        <article class="pro-window pro-timeline-panel">
-            <header class="pro-window-caption pro-timeline-caption">
+        <article class="pro-window pro-chart-panel">
+            <header class="pro-window-caption pro-chart-caption">
                 <div>
-                    <span>Trạng thái 30 phút gần nhất</span>
-                    <small>Mỗi ô biểu diễn 1 phút · ưu tiên OFFLINE → ALARM → RUN → STOP</small>
+                    <span>Cycle Time theo thời gian</span>
+                    {% if focus_snapshot %}
+                    <small>{{ focus_snapshot.machine.code }} · 60 bản ghi gần nhất</small>
+                    {% else %}
+                    <small>Chưa có dữ liệu để hiển thị</small>
+                    {% endif %}
                 </div>
-                <div class="pro-timeline-legend" aria-label="Chú thích trạng thái">
-                    <span><i class="timeline-run"></i>Chạy</span>
-                    <span><i class="timeline-stop"></i>Dừng</span>
-                    <span><i class="timeline-alarm"></i>Alarm</span>
-                    <span><i class="timeline-offline"></i>Mất dữ liệu</span>
-                    <span><i class="timeline-unknown"></i>Chưa xác định</span>
+
+                {% if focus_snapshot and focus_snapshot.latest %}
+                <div class="pro-current-value">
+                    <small>Giá trị hiện tại</small>
+                    {% if focus_snapshot.state == "offline" %}
+                    <strong>—</strong><span>Dữ liệu gián đoạn</span>
+                    {% else %}
+                    <strong>{{ focus_snapshot.latest.cycle_time_ms|default:"—" }}</strong><span>ms</span>
+                    {% endif %}
                 </div>
+                {% endif %}
             </header>
 
-            <div class="pro-timeline-body">
-                <div class="pro-timeline-axis" aria-hidden="true">
-                    <span></span>
-                    <div>
-                        <span>{{ timeline_labels.start }}</span>
-                        <span>{{ timeline_labels.middle }}</span>
-                        <span>{{ timeline_labels.end }}</span>
-                    </div>
-                    <span></span>
-                </div>
-
-                <div class="pro-timeline-machine-list">
-                    {% for row in status_timeline %}
-                    <a class="pro-timeline-row"
-                       href="{% url 'monitoring:machine_detail' row.machine.code %}">
-                        <div class="pro-timeline-machine">
-                            <strong>{{ row.machine.code }}</strong>
-                            <small>{{ row.machine.name }}</small>
-                        </div>
-
-                        <div class="pro-timeline-track">
-                            {% for segment in row.segments %}
-                            <span class="pro-timeline-segment timeline-{{ segment.state }}"
-                                  title="{{ segment.time }} · {{ segment.label }}"></span>
-                            {% endfor %}
-                        </div>
-
-                        <span class="pro-timeline-arrow">›</span>
-                    </a>
-                    {% empty %}
-                    <div class="pro-empty">Chưa có dữ liệu Timeline.</div>
-                    {% endfor %}
-                </div>
+            <div class="pro-chart-area">
+                <canvas id="cycleChart" aria-label="Biểu đồ Cycle Time"></canvas>
             </div>
         </article>
 
@@ -300,11 +251,11 @@
                 </header>
 
                 <div class="pro-health-body">
-                    <h2 id="collectorHealthText">{% if collector_ok %}Đang cập nhật{% else %}Đang gián đoạn{% endif %}</h2>
+                    <h2>{% if collector_ok %}Đang cập nhật{% else %}Đang gián đoạn{% endif %}</h2>
                     <div class="pro-health-grid">
                         <div><span>Tổng máy</span><strong>{{ summary.total }}</strong></div>
-                        <div><span>Mất dữ liệu</span><strong id="collectorOfflineCount">{{ summary.offline }}</strong></div>
-                        <div><span>Cảnh báo</span><strong id="collectorAlarmCount">{{ summary.alarm }}</strong></div>
+                        <div><span>Mất dữ liệu</span><strong>{{ summary.offline }}</strong></div>
+                        <div><span>Cảnh báo</span><strong>{{ summary.alarm }}</strong></div>
                         <div><span>Web</span><strong>ONLINE</strong></div>
                     </div>
                     <a class="pro-raised-action" href="{% url 'monitoring:system' %}">Mở chẩn đoán hệ thống →</a>
@@ -349,10 +300,11 @@
             <strong>{% if collector_ok %}LIVE{% else %}CHECK{% endif %}</strong>
         </div>
         <div><i class="ok"></i><span>Web</span><strong>ONLINE</strong></div>
-        <div><i class="info"></i><span>Database</span><strong>{{ runtime_db_engine|upper }}</strong></div>
+        <div><i class="info"></i><span>Database</span><strong>PostgreSQL</strong></div>
         <div><i class="info"></i><span>Máy</span><strong>{{ summary.total }}</strong></div>
         <a href="{% url 'monitoring:system' %}">System Diagnostics →</a>
     </section>
 </div>
 
+{{ overview_chart_data|json_script:"machine-chart-data" }}
 {% endblock %}

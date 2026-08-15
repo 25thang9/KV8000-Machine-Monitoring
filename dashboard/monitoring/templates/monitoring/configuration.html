@@ -1,0 +1,179 @@
+{% extends "monitoring/base.html" %}
+
+{% block content %}
+<section class="config-note">
+    <strong>READ-ONLY PLC</strong>
+    <span>Thêm bao nhiêu PLC/Machine tùy nhu cầu. Trang này chỉ sửa cấu hình database, không ghi device xuống PLC.</span>
+</section>
+
+
+{% if conflicted_machine_count %}
+<div class="form-error" style="margin-bottom:14px;">
+    <strong>Phát hiện {{ conflicted_machine_count }} Machine có mapping trùng/chồng trên cùng PLC.</strong>
+    Dữ liệu cũ không bị tự xóa. Hãy bấm <strong>Sửa mapping</strong> ở Machine có cảnh báo và đổi MR/DM sang địa chỉ riêng.
+    Strict guard sẽ không cho lưu mapping trùng mới.
+</div>
+{% endif %}
+
+<div class="config-grid">
+    <section class="config-card">
+        <div class="config-card-head">
+            <div>
+                <span>01 · PLC CONTROLLER</span>
+                <h2>{% if edit_plc %}Sửa {{ edit_plc.code }}{% else %}Thêm PLC{% endif %}</h2>
+            </div>
+            {% if edit_plc %}<a class="button secondary-button" href="{% url 'monitoring:configuration' %}">Hủy sửa</a>{% endif %}
+        </div>
+
+        <form method="post" class="config-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_plc">
+            <input type="hidden" name="target_id" value="{% if edit_plc %}{{ edit_plc.pk }}{% endif %}">
+
+            {% if plc_form.non_field_errors %}<div class="form-error">{{ plc_form.non_field_errors }}</div>{% endif %}
+            <div class="config-fields two-col">
+                {% for field in plc_form %}
+                <label class="config-field {% if field.name == 'is_active' %}check-field{% endif %}">
+                    <span>{{ field.label }}</span>
+                    {{ field }}
+                    {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                    {% for error in field.errors %}<b class="field-error">{{ error }}</b>{% endfor %}
+                </label>
+                {% endfor %}
+            </div>
+            <button class="button primary-button" type="submit">Lưu PLC</button>
+        </form>
+    </section>
+
+    <section class="config-card">
+        <div class="config-card-head">
+            <div>
+                <span>02 · MACHINE + SIGNAL MAPPING</span>
+                <h2>{% if edit_machine %}Sửa {{ edit_machine.code }}{% elif clone_source %}Nhân bản {{ clone_source.code }}{% else %}Thêm máy{% endif %}</h2>
+            </div>
+            {% if edit_machine or clone_source %}<a class="button secondary-button" href="{% url 'monitoring:configuration' %}">Hủy</a>{% endif %}
+        </div>
+
+        {% if not controllers %}
+        <div class="form-error">Phải tạo ít nhất một PLC trước khi thêm Machine.</div>
+        {% endif %}
+
+        <form method="post" class="config-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_machine">
+            <input type="hidden" name="target_id" value="{% if edit_machine %}{{ edit_machine.pk }}{% endif %}">
+            <input type="hidden" name="clone_source_id" value="{% if clone_source %}{{ clone_source.pk }}{% endif %}">
+
+            {% if machine_form.non_field_errors %}<div class="form-error">{{ machine_form.non_field_errors }}</div>{% endif %}
+            {% if clone_source %}
+            <div class="clone-note">
+                Đang sao chép cấu hình từ <strong>{{ clone_source.code }}</strong>. Các MR/DM được copy nguyên để làm mẫu nên hiện đang trùng máy nguồn. Máy mới mặc định PAUSED; hãy đổi Mã máy và sửa mapping. Mapping trên cùng PLC phải duy nhất: nếu MR/DM còn trùng/chồng với bất kỳ Machine nào, hệ thống sẽ không cho lưu.
+            </div>
+            {% endif %}
+
+            <div class="config-fields two-col machine-meta-fields">
+                {% for field in machine_form %}
+                    {% if field.name == 'machine_code' or field.name == 'machine_name' or field.name == 'description' or field.name == 'controller' or field.name == 'is_active' %}
+                    <label class="config-field {% if field.name == 'is_active' %}check-field{% endif %}">
+                        <span>{{ field.label }}</span>
+                        {{ field }}
+                        {% for error in field.errors %}<b class="field-error">{{ error }}</b>{% endfor %}
+                    </label>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            <div class="mapping-editor">
+                <div class="mapping-head"><span>Tín hiệu</span><span>Device</span><span>Kiểu dữ liệu</span><span>Word order</span></div>
+                <div class="mapping-row"><strong>RUN</strong><div>{{ machine_form.run_address }}</div><div>BIT</div><div>—</div></div>
+                <div class="mapping-row"><strong>STOP</strong><div>{{ machine_form.stop_address }}</div><div>BIT</div><div>—</div></div>
+                <div class="mapping-row"><strong>ALARM</strong><div>{{ machine_form.alarm_address }}</div><div>BIT</div><div>—</div></div>
+                <div class="mapping-row"><strong>AUTO MODE</strong><div>{{ machine_form.auto_address }}</div><div>BIT</div><div>—</div></div>
+                <div class="mapping-row"><strong>PRODUCTION COUNT</strong><div>{{ machine_form.production_address }}</div><div>{{ machine_form.production_type }}</div><div>{{ machine_form.production_word_order }}</div></div>
+                <div class="mapping-row"><strong>CYCLE TIME</strong><div>{{ machine_form.cycle_address }}</div><div>{{ machine_form.cycle_type }}</div><div>{{ machine_form.cycle_word_order }}</div></div>
+                <div class="mapping-row"><strong>ALARM CODE</strong><div>{{ machine_form.alarm_code_address }}</div><div>{{ machine_form.alarm_code_type }}</div><div>{{ machine_form.alarm_code_word_order }}</div></div>
+                <div class="mapping-row"><strong>RECIPE</strong><div>{{ machine_form.recipe_address }}</div><div>{{ machine_form.recipe_type }}</div><div>{{ machine_form.recipe_word_order }}</div></div>
+            </div>
+
+            {% for field in machine_form %}
+                {% if field.errors %}
+                    {% for error in field.errors %}<b class="field-error">{{ field.label }}: {{ error }}</b>{% endfor %}
+                {% endif %}
+            {% endfor %}
+
+            <p class="config-help">Word order chỉ có tác dụng với UINT32/INT32. Mỗi tín hiệu 32-bit được cấu hình riêng, tránh ghi đè cấu hình của tín hiệu khác.</p>
+            <button class="button primary-button" type="submit" {% if not controllers %}disabled{% endif %}>Lưu Machine + Mapping</button>
+        </form>
+    </section>
+</div>
+
+<section class="config-list-card config-import-card">
+    <div class="config-card-head">
+        <div><span>03 · THÊM NHIỀU MACHINE</span><h2>Import CSV mapping</h2></div>
+        <a class="button secondary-button" href="{% url 'monitoring:machine_import_template' %}">Tải CSV mẫu</a>
+    </div>
+    <form method="post" action="{% url 'monitoring:import_machine_csv' %}" enctype="multipart/form-data" class="csv-import-form">
+        {% csrf_token %}
+        <input class="csv-file-input" type="file" name="csv_file" accept=".csv,text/csv" required>
+        <button class="button primary-button" type="submit">Import CSV</button>
+    </form>
+    <p class="config-help csv-help">CSV dùng để tạo hàng loạt Machine + 8 mapping. Import là all-or-nothing: có một dòng lỗi thì không tạo dòng nào. Cột <b>is_active</b> để trống/FALSE sẽ giữ máy ở PAUSED để kiểm tra mapping trước.</p>
+</section>
+
+<section class="config-list-card">
+    <div class="config-card-head"><div><span>04 · PLC ĐÃ CẤU HÌNH</span><h2>Danh sách PLC</h2></div><a class="button secondary-button" href="{% url 'monitoring:system' %}">Chẩn đoán hệ thống</a></div>
+    <div class="table-scroll">
+        <table class="config-table">
+            <thead><tr><th>PLC</th><th>Endpoint</th><th>Poll</th><th>Máy</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody>
+            {% for plc in controllers %}
+                <tr>
+                    <td><strong>{{ plc.code }}</strong><small>{{ plc.name }}</small></td>
+                    <td class="mono">{{ plc.host }}:{{ plc.port }}</td>
+                    <td>{{ plc.poll_interval_ms }} ms</td>
+                    <td>{{ plc.machines.count }}</td>
+                    <td>{% if plc.is_active %}<span class="config-badge ok">ACTIVE</span>{% else %}<span class="config-badge muted">DISABLED</span>{% endif %}</td>
+                    <td class="config-actions">
+                        <a class="button secondary-button" href="?edit_plc={{ plc.pk }}">Sửa</a>
+                        <form method="post" action="{% url 'monitoring:toggle_controller' plc.pk %}">{% csrf_token %}<button class="button {% if plc.is_active %}warning-button{% else %}success-button{% endif %}" type="submit">{% if plc.is_active %}Tạm dừng{% else %}Bật{% endif %}</button></form>
+                    </td>
+                </tr>
+            {% empty %}<tr><td colspan="6">Chưa có PLC.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="config-list-card">
+    <div class="config-card-head"><div><span>05 · MACHINE ĐÃ CẤU HÌNH</span><h2>Danh sách máy</h2></div><span class="config-count">{{ configured_machines|length }} máy</span></div>
+    <div class="table-scroll">
+        <table class="config-table">
+            <thead><tr><th>Machine</th><th>PLC</th><th>Mapping</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody>
+            {% for item in configured_machines %}
+                <tr>
+                    <td><strong>{{ item.code }}</strong><small>{{ item.name }}</small></td>
+                    <td>{{ item.controller.code }}</td>
+                    <td>{{ item.signal_mappings.all|length }}/8</td>
+                    <td>
+                        {% if item.mapping_conflicts %}
+                            <span class="config-badge" style="background:rgba(199,68,68,.14);color:#d95555;">TRÙNG MAPPING</span>
+                            <small>{{ item.mapping_conflicts.0 }}</small>
+                        {% elif item.is_active %}
+                            <span class="config-badge ok">MONITORING</span>
+                        {% else %}
+                            <span class="config-badge muted">PAUSED</span>
+                        {% endif %}
+                    </td>
+                    <td class="config-actions">
+                        <a class="button secondary-button clone-button" href="?clone_machine={{ item.pk }}">Nhân bản</a>
+                        <a class="button secondary-button" href="?edit_machine={{ item.pk }}">Sửa mapping</a>
+                        <form method="post" action="{% url 'monitoring:toggle_machine' item.pk %}">{% csrf_token %}<button class="button {% if item.is_active %}warning-button{% else %}success-button{% endif %}" type="submit">{% if item.is_active %}Tạm dừng{% else %}Bật{% endif %}</button></form>
+                    </td>
+                </tr>
+            {% empty %}<tr><td colspan="5">Chưa có Machine gắn PLC.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

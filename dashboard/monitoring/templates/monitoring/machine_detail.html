@@ -1,148 +1,751 @@
 {% extends "monitoring/base.html" %}
 
 {% block content %}
+
+<!-- =========================================================
+     CHỌN MÁY
+     ========================================================= -->
 <section class="machine-selector-bar">
-    <form method="get">
-        <label for="machineSelect">Máy đang xem</label>
-        <select id="machineSelect" name="machine" onchange="window.location.href='/machines/' + this.value + '/'">
+
+    <!-- MÁY TRƯỚC -->
+    <div class="page-tabs">
+
+        {% if previous_machine %}
+
+        <a href="{% url 'monitoring:machine_detail' previous_machine.code %}">
+            ← {{ previous_machine.code }}
+        </a>
+
+        {% else %}
+
+        <span class="machine-nav-disabled">
+            ← Máy trước
+        </span>
+
+        {% endif %}
+
+    </div>
+
+
+    <!-- CHỌN MÁY -->
+    <div class="machine-quick-selector">
+
+        <label for="machine-detail-select">
+            CHỌN MÁY
+        </label>
+
+        <select
+            id="machine-detail-select"
+            onchange="if(this.value){window.location.href=this.value;}"
+        >
+
             {% for item in machines %}
-            <option value="{{ item.code }}" {% if machine and item.code == machine.code %}selected{% endif %}>
+
+            <option
+                value="{% url 'monitoring:machine_detail' item.code %}"
+                {% if machine and item.code == machine.code %}selected{% endif %}
+            >
                 {{ item.code }} — {{ item.name }}
             </option>
+
             {% endfor %}
+
         </select>
-    </form>
-    {% if machine %}
-    <nav class="page-tabs" aria-label="Các phần của trang">
-        <a href="#operation">Vận hành</a>
-        <a href="#trend">Xu hướng</a>
-        <a href="#signals">Tín hiệu</a>
-        <a href="#technical">Kỹ thuật</a>
-    </nav>
-    {% endif %}
+
+
+        {% if machine %}
+
+        <small>
+            Máy
+
+            {% if current_machine_index != None %}
+                {{ current_machine_index|add:"1" }}
+            {% else %}
+                —
+            {% endif %}
+
+            / {{ machine_count }}
+        </small>
+
+        {% endif %}
+
+    </div>
+
+
+    <!-- MÁY SAU -->
+    <div class="page-tabs">
+
+        {% if next_machine %}
+
+        <a href="{% url 'monitoring:machine_detail' next_machine.code %}">
+            {{ next_machine.code }} →
+        </a>
+
+        {% else %}
+
+        <span class="machine-nav-disabled">
+            Máy sau →
+        </span>
+
+        {% endif %}
+
+    </div>
+
 </section>
+
+
 
 {% if machine and latest %}
-<section id="operation" class="operator-hero state-border-{{ snapshot.state }}">
+
+<!-- =========================================================
+     TRẠNG THÁI HIỆN TẠI
+     ========================================================= -->
+<section
+    id="operation"
+    class="operator-hero state-border-{{ snapshot.state }}"
+    data-machine-detail-code="{{ machine.code }}"
+>
+
     <div class="operator-state-block">
-        <span>TRẠNG THÁI HIỆN TẠI</span>
-        <h2 class="state-text-{{ snapshot.state }}">{{ snapshot.state_label }}</h2>
-        <p>{{ machine.code }} — {{ machine.name }}</p>
-        <small>
+
+        <span>
+            TRẠNG THÁI HIỆN TẠI
+        </span>
+
+        <h2 id="machineStateLabel" class="state-text-{{ snapshot.state }}">
+            {{ snapshot.state_label }}
+        </h2>
+
+        <p>
+            {{ machine.code }} — {{ machine.name }}
+        </p>
+
+        <small id="machineStateDescription">
+
             {% if snapshot.state == 'alarm' %}
-                Máy đang phát sinh cảnh báo. Kiểm tra mã {{ latest.alarm_code }}.
+
+                Máy đang phát sinh cảnh báo.
+                Kiểm tra mã {{ latest.alarm_code }}.
+
             {% elif snapshot.state == 'offline' %}
-                Bản ghi mới nhất đã quá {{ snapshot.age_seconds }} giây. Kiểm tra Collector hoặc kết nối PLC.
+
+                {% if snapshot.is_stale %}
+                    Dữ liệu chưa được cập nhật trong
+                    {{ snapshot.age_seconds }} giây.
+                    Kiểm tra Collector hoặc kết nối PLC.
+                {% else %}
+                    Collector đã ghi nhận PLC mất kết nối.
+                    Kiểm tra kết nối Ethernet / trạng thái truyền thông PLC.
+                {% endif %}
+
             {% elif snapshot.state == 'run' %}
+
                 Máy đang thực hiện chu kỳ sản xuất.
+
             {% elif snapshot.state == 'stop' %}
+
                 Máy đang ở trạng thái dừng.
+                Cycle Time hiện tại không phát sinh.
+
             {% else %}
+
                 RUN, STOP và ALARM đều chưa xác định rõ.
+
             {% endif %}
+
         </small>
+
     </div>
 
+
+
+    <!-- =====================================================
+         KPI MÁY
+         ===================================================== -->
     <div class="operator-kpis">
+
+        <!-- SẢN LƯỢNG -->
         <article>
-            <span>Sản lượng</span>
-            <strong>{{ latest.production_count }}</strong>
-            <small>sản phẩm · DM1000</small>
+
+            <span>
+                Sản lượng
+            </span>
+
+            <strong id="machineProductionCount">
+                {{ latest.production_count }}
+            </strong>
+
+            <small>
+                sản phẩm · {{ mapping_addresses.production_count|default:"—" }}
+            </small>
+
         </article>
+
+
+        <!-- CYCLE TIME -->
         <article>
-            <span>Cycle Time</span>
-            <strong>{{ latest.cycle_time_ms|default:"—" }}</strong>
-            <small>ms · DM1002</small>
+
+            <span>
+                Cycle Time
+            </span>
+
+
+            {% if latest.cycle_time_ms != None %}
+
+                <strong id="machineCycleTime">
+                    {{ latest.cycle_time_ms }}
+                </strong>
+
+                <small>
+                    ms · hiện tại · {{ mapping_addresses.cycle_time_ms|default:"—" }}
+                </small>
+
+
+            {% elif last_cycle_time_ms != None %}
+
+                <strong id="machineCycleTime" class="cycle-history-value">
+                    {{ last_cycle_time_ms }}
+                </strong>
+
+                <small>
+                    ms · gần nhất · {{ mapping_addresses.cycle_time_ms|default:"—" }}
+                </small>
+
+
+            {% else %}
+
+                <strong id="machineCycleTime">
+                    —
+                </strong>
+
+                <small>
+                    chưa có dữ liệu Cycle Time
+                </small>
+
+            {% endif %}
+
         </article>
+
+
+        <!-- CHẾ ĐỘ -->
         <article>
-            <span>Chế độ</span>
-            <strong class="text-value">{% if latest.auto_mode_bit %}AUTO{% else %}MANUAL{% endif %}</strong>
-            <small>MR103</small>
+
+            <span>
+                Chế độ
+            </span>
+
+            <strong id="machineMode" class="text-value">
+
+                {% if latest.auto_mode_bit %}
+                    AUTO
+                {% else %}
+                    MANUAL
+                {% endif %}
+
+            </strong>
+
+            <small>
+                {{ mapping_addresses.auto_mode_bit|default:"—" }}
+            </small>
+
         </article>
+
+
+        <!-- NGUỒN -->
         <article>
-            <span>Nguồn dữ liệu</span>
-            <strong class="text-value">{{ latest.source }}</strong>
-            <small>{{ snapshot.connection_label }}</small>
+
+            <span>
+                Nguồn dữ liệu
+            </span>
+
+            <strong id="machineSource" class="text-value">
+                {{ latest.source }}
+            </strong>
+
+            <small id="machineConnectionLabel">
+                {{ snapshot.connection_label }}
+            </small>
+
         </article>
+
     </div>
+
 </section>
 
-<section id="trend" class="panel two-column-panel">
+
+
+<!-- =========================================================
+     CYCLE TIME TREND
+     ========================================================= -->
+<section
+    id="trend"
+    class="panel two-column-panel"
+>
+
     <div class="panel-head">
+
         <div>
-            <span>XU HƯỚNG VẬN HÀNH</span>
-            <h2>Cycle Time gần nhất</h2>
-            <p>Hiển thị tối đa 60 bản ghi mới nhất theo thời gian.</p>
+
+            <span>
+                XU HƯỚNG VẬN HÀNH
+            </span>
+
+            <h2>
+                Cycle Time gần nhất
+            </h2>
+
+
+            {% if latest.cycle_time_ms != None %}
+
+            <p>
+                Máy đang phát sinh chu kỳ mới.
+                Biểu đồ hiển thị tối đa 60 Cycle Time hợp lệ gần nhất.
+            </p>
+
+
+            {% elif last_cycle_time_ms != None %}
+
+            <p>
+                Máy hiện không phát sinh chu kỳ mới.
+                Biểu đồ bên dưới giữ lại dữ liệu Cycle Time gần nhất trước đó.
+            </p>
+
+
+            {% else %}
+
+            <p>
+                Máy chưa có dữ liệu Cycle Time để hiển thị.
+            </p>
+
+            {% endif %}
+
         </div>
-        <strong class="current-value">{{ latest.cycle_time_ms|default:"—" }} ms</strong>
+
+
+
+        <!-- GIÁ TRỊ BÊN PHẢI -->
+        <div class="cycle-current-block">
+
+            {% if latest.cycle_time_ms != None %}
+
+                <span>
+                    HIỆN TẠI
+                </span>
+
+                <strong class="current-value">
+                    {{ latest.cycle_time_ms }}
+                    <small>ms</small>
+                </strong>
+
+
+            {% elif last_cycle_time_ms != None %}
+
+                <span>
+                    GẦN NHẤT
+                </span>
+
+                <strong class="current-value cycle-history-value">
+                    {{ last_cycle_time_ms }}
+                    <small>ms</small>
+                </strong>
+
+
+            {% else %}
+
+                <span>
+                    CYCLE TIME
+                </span>
+
+                <strong class="current-value">
+                    —
+                </strong>
+
+            {% endif %}
+
+        </div>
+
     </div>
+
+
+
+    <!-- =====================================================
+         THÔNG BÁO KHI ĐANG DÙNG DỮ LIỆU CŨ
+         ===================================================== -->
+    {% if latest.cycle_time_ms == None and last_cycle_time_ms != None %}
+
+    <div class="cycle-history-notice">
+
+        <span class="cycle-history-icon">
+            i
+        </span>
+
+        <div>
+
+            <strong>
+                Đang hiển thị dữ liệu lịch sử
+            </strong>
+
+            <small>
+                Máy hiện không có Cycle Time mới.
+                Biểu đồ là 60 chu kỳ hợp lệ gần nhất trước khi máy dừng,
+                cảnh báo hoặc ngừng phát sinh chu kỳ.
+            </small>
+
+        </div>
+
+    </div>
+
+    {% endif %}
+
+
+
+    <!-- =====================================================
+         CHART
+         ===================================================== -->
     <div class="chart-wrap">
-        <canvas id="cycleChart" aria-label="Biểu đồ Cycle Time"></canvas>
+
+        {% if chart_data %}
+
+        <canvas
+            id="cycleChart"
+            aria-label="Biểu đồ Cycle Time"
+        ></canvas>
+
+        {% else %}
+
+        <div class="cycle-no-data">
+
+            <strong>
+                Chưa có dữ liệu Cycle Time
+            </strong>
+
+            <span>
+                Biểu đồ sẽ xuất hiện sau khi máy hoàn thành chu kỳ đầu tiên.
+            </span>
+
+        </div>
+
+        {% endif %}
+
     </div>
+
 </section>
 
-<section id="signals" class="panel">
+
+
+<!-- =========================================================
+     TÍN HIỆU VẬN HÀNH
+     ========================================================= -->
+<section
+    id="signals"
+    class="panel"
+>
+
     <div class="panel-head">
+
         <div>
-            <span>TÍN HIỆU VẬN HÀNH</span>
-            <h2>Trạng thái dễ đọc</h2>
-            <p>Phần này dành cho người vận hành; không cần đọc địa chỉ PLC.</p>
+
+            <span>
+                TÍN HIỆU VẬN HÀNH
+            </span>
+
+            <h2>
+                Trạng thái dễ đọc
+            </h2>
+
+            <p>
+                Phần này dành cho người vận hành;
+                không cần đọc địa chỉ PLC.
+            </p>
+
         </div>
+
     </div>
+
+
     <div class="signal-lamp-grid">
-        <article class="signal-lamp {% if latest.run_bit %}lamp-on{% endif %}">
-            <i></i><span>Máy chạy</span><strong>{% if latest.run_bit %}ON{% else %}OFF{% endif %}</strong>
+
+        <!-- RUN -->
+        <article
+            id="signalLampRun"
+            class="signal-lamp {% if latest.run_bit %}lamp-on{% endif %}"
+        >
+
+            <i></i>
+
+            <span>
+                Máy chạy
+            </span>
+
+            <strong id="signalValueRun">
+                {% if latest.run_bit %}
+                    ON
+                {% else %}
+                    OFF
+                {% endif %}
+            </strong>
+
         </article>
-        <article class="signal-lamp {% if latest.stop_bit %}lamp-warning{% endif %}">
-            <i></i><span>Máy dừng</span><strong>{% if latest.stop_bit %}ON{% else %}OFF{% endif %}</strong>
+
+
+        <!-- STOP -->
+        <article
+            id="signalLampStop"
+            class="signal-lamp {% if latest.stop_bit %}lamp-warning{% endif %}"
+        >
+
+            <i></i>
+
+            <span>
+                Máy dừng
+            </span>
+
+            <strong id="signalValueStop">
+                {% if latest.stop_bit %}
+                    ON
+                {% else %}
+                    OFF
+                {% endif %}
+            </strong>
+
         </article>
-        <article class="signal-lamp {% if latest.alarm_bit %}lamp-alarm{% endif %}">
-            <i></i><span>Cảnh báo</span><strong>{% if latest.alarm_bit %}ON{% else %}OFF{% endif %}</strong>
+
+
+        <!-- ALARM -->
+        <article
+            id="signalLampAlarm"
+            class="signal-lamp {% if latest.alarm_bit %}lamp-alarm{% endif %}"
+        >
+
+            <i></i>
+
+            <span>
+                Cảnh báo
+            </span>
+
+            <strong id="signalValueAlarm">
+                {% if latest.alarm_bit %}
+                    ON
+                {% else %}
+                    OFF
+                {% endif %}
+            </strong>
+
         </article>
-        <article class="signal-lamp {% if latest.auto_mode_bit %}lamp-info{% endif %}">
-            <i></i><span>Tự động</span><strong>{% if latest.auto_mode_bit %}ON{% else %}OFF{% endif %}</strong>
+
+
+        <!-- AUTO -->
+        <article
+            id="signalLampAuto"
+            class="signal-lamp {% if latest.auto_mode_bit %}lamp-info{% endif %}"
+        >
+
+            <i></i>
+
+            <span>
+                Tự động
+            </span>
+
+            <strong id="signalValueAuto">
+                {% if latest.auto_mode_bit %}
+                    ON
+                {% else %}
+                    OFF
+                {% endif %}
+            </strong>
+
         </article>
+
     </div>
+
 </section>
 
-<details id="technical" class="technical-panel">
+
+
+<!-- =========================================================
+     CHI TIẾT KỸ THUẬT
+     ========================================================= -->
+<details
+    id="technical"
+    class="technical-panel"
+>
+
     <summary>
-        <span><strong>Chi tiết kỹ thuật</strong><small>Mapping MR/DM và giá trị thô dành cho kỹ sư</small></span>
-        <b>MỞ / ĐÓNG</b>
+
+        <span>
+
+            <strong>
+                Chi tiết kỹ thuật
+            </strong>
+
+            <small>
+                Mapping MR/DM và giá trị thô dành cho kỹ sư
+            </small>
+
+        </span>
+
+        <b>
+            MỞ / ĐÓNG
+        </b>
+
     </summary>
+
+
     <div class="technical-body">
+
         <div class="technical-summary">
-            <div><span>Cập nhật cuối</span><strong>{{ latest.recorded_at|date:"d/m/Y H:i:s" }}</strong></div>
-            <div><span>PLC Online bit</span><strong>{{ latest.plc_online }}</strong></div>
-            <div><span>Nguồn</span><strong>{{ latest.source }}</strong></div>
-            <div><span>Recipe</span><strong>{{ latest.recipe_no }}</strong></div>
+
+            <div>
+
+                <span>
+                    Cập nhật cuối
+                </span>
+
+                <strong>
+                    {{ latest.recorded_at|date:"d/m/Y H:i:s" }}
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    PLC Online bit
+                </span>
+
+                <strong>
+                    {{ latest.plc_online }}
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    Nguồn
+                </span>
+
+                <strong>
+                    {{ latest.source }}
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    Recipe
+                </span>
+
+                <strong>
+                    {{ latest.recipe_no }}
+                </strong>
+
+            </div>
+
         </div>
+
+
+
         <div class="table-scroll">
+
             <table>
+
                 <thead>
-                    <tr><th>Địa chỉ</th><th>Kiểu</th><th>Tín hiệu</th><th>Giá trị gốc</th><th>Hiển thị</th></tr>
-                </thead>
-                <tbody>
-                {% for signal in signal_rows %}
+
                     <tr>
-                        <td class="mono">{{ signal.address }}</td>
-                        <td>{{ signal.data_type }}</td>
-                        <td><strong>{{ signal.name }}</strong><small>{{ signal.technical_name }}</small></td>
-                        <td class="mono">{{ signal.raw_value }}</td>
-                        <td><span class="value-chip value-{{ signal.value_class }}">{{ signal.display_value }}</span></td>
+                        <th>Địa chỉ</th>
+                        <th>Kiểu</th>
+                        <th>Tín hiệu</th>
+                        <th>Giá trị gốc</th>
+                        <th>Hiển thị</th>
                     </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                {% for signal in signal_rows %}
+
+                    <tr>
+
+                        <td class="mono">
+                            {{ signal.address }}
+                        </td>
+
+                        <td>
+                            {{ signal.data_type }}
+                        </td>
+
+                        <td>
+
+                            <strong>
+                                {{ signal.name }}
+                            </strong>
+
+                            <small>
+                                {{ signal.technical_name }}
+                            </small>
+
+                        </td>
+
+                        <td class="mono">
+                            {{ signal.raw_value }}
+                        </td>
+
+                        <td>
+
+                            <span
+                                class="value-chip value-{{ signal.value_class }}"
+                            >
+                                {{ signal.display_value }}
+                            </span>
+
+                        </td>
+
+                    </tr>
+
                 {% endfor %}
+
                 </tbody>
+
             </table>
+
         </div>
+
     </div>
+
 </details>
 
+
+
+<!-- =========================================================
+     JSON CHO JAVASCRIPT CHART
+     ========================================================= -->
 {{ chart_data|json_script:"machine-chart-data" }}
+
+
 {% else %}
+
+
 <section class="empty-state">
-    <h2>Chưa có dữ liệu máy</h2>
-    <p>Chạy Mock Collector hoặc PLC Collector để tạo bản ghi đầu tiên.</p>
+
+    <h2>
+        Chưa có dữ liệu máy
+    </h2>
+
+    <p>
+        Collector PLC chưa tạo trạng thái hiện tại cho máy này.
+        Kiểm tra cấu hình PLC, mapping và log collector.
+    </p>
+
 </section>
+
+
 {% endif %}
+
 {% endblock %}

@@ -1,288 +1,580 @@
 """
-Mock Collector cho KV8000 Machine Monitoring.
+MOCK COLLECTOR - 50 MACHINES STRESS TEST
 
-Công dụng:
-- Mô phỏng dữ liệu của máy khi chưa có PLC thật.
-- Tạo trạng thái RUN, STOP và ALARM.
-- Tăng bộ đếm sản lượng khi máy RUN.
-- Ghi dữ liệu vào PostgreSQL.
-- Giúp kiểm tra Dashboard, biểu đồ và lịch sử.
-
-Khi kết nối PLC thật, file này sẽ được thay bằng
-Collector đọc dữ liệu KEYENCE KV-8000.
+- Tạo/duy trì MACHINE-01 ... MACHINE-50.
+- Không kết nối PLC thật.
+- Ghi dữ liệu MOCK vào PostgreSQL theo lô.
+- Có RUN / STOP / ALARM / OFFLINE(stale) / UNKNOWN.
+- Poll mặc định 10 giây để stress test ổn định.
 """
+
+from __future__ import annotations
 
 import os
 import random
 import sys
 import time
+from datetime import timedelta
 from pathlib import Path
 
-
-# ---------------------------------------------------------
-# NẠP CẤU HÌNH DJANGO
-# ---------------------------------------------------------
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DASHBOARD_ROOT = PROJECT_ROOT / "dashboard"
 
-DASHBOARD_DIR = PROJECT_ROOT / "dashboard"
-
-sys.path.insert(
-    0,
-    str(DASHBOARD_DIR),
-)
+if str(DASHBOARD_ROOT) not in sys.path:
+    sys.path.insert(0, str(DASHBOARD_ROOT))
 
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
     "machine_monitoring.settings",
 )
 
-import django
+import django  # noqa: E402
 
 django.setup()
 
+from django.db import (  # noqa: E402
+    InterfaceError,
+    OperationalError,
+    close_old_connections,
+    transaction,
+)
+from django.utils import timezone  # noqa: E402
 
-# Chỉ import Model sau khi Django đã được khởi tạo.
-from django.db import OperationalError
-from django.db import close_old_connections
-from django.utils import timezone
-
-from monitoring.models import Machine
-from monitoring.models import MachineReading
-
-
-# ---------------------------------------------------------
-# CẤU HÌNH MÔ PHỎNG
-# ---------------------------------------------------------
-
-MACHINE_CODE = "MACHINE-01"
-MACHINE_NAME = "Máy mô phỏng số 01"
-
-# Poll Interval = chu kỳ giữa hai lần thu thập dữ liệu.
-POLL_INTERVAL_SECONDS = 2
-
-# Seed giúp dữ liệu ngẫu nhiên ổn định hơn khi kiểm thử.
-RANDOM_SEED = 8000
+from monitoring.models import Machine, MachineReading  # noqa: E402
 
 
-def determine_machine_state(step_number):
-    """
-    Tạo chu kỳ hoạt động có thể quan sát được.
+# ============================================================
+# CẤU HÌNH
+# ============================================================
 
-    Mỗi chu kỳ 30 bước:
-    - Phần lớn thời gian: RUN.
-    - Bước 10 đến 12: STOP.
-    - Bước 24 đến 25: ALARM.
-    """
-
-    position = step_number % 30
-
-    if position in {24, 25}:
-        return "ALARM"
-
-    if position in {10, 11, 12}:
-        return "STOP"
-
-    return "RUN"
+TOTAL_MACHINES = 50
+POLL_SECONDS = 10
+SEED_HISTORY_MINUTES = 30
 
 
-def build_reading_values(
-    machine_state,
-    production_count,
-    random_generator,
-):
-    """
-    Chuyển trạng thái máy thành các giá trị tương ứng
-    với địa chỉ PLC trong đề bài.
-    """
+# ============================================================
+# MACHINE
+# ============================================================
 
-    run_bit = machine_state == "RUN"
-    stop_bit = machine_state == "STOP"
-    alarm_bit = machine_state == "ALARM"
 
-    cycle_time_ms = None
-    alarm_code = 0
+def machine_code(number: int) -> str:
+    return f"MACHINE-{number:02d}"
 
-    if run_bit:
-        production_count += 1
 
-        cycle_time_ms = random_generator.randint(
-            3200,
-            4100,
+def ensure_machines() -> list[Machine]:
+    """Tạo MACHINE-01 ... MACHINE-50 và tắt mock stress cũ nếu có."""
+
+    wanted_codes = [
+        machine_code(number)
+        for number in range(1, TOTAL_MACHINES + 1)
+    ]
+
+    # Tắt các mã stress cũ dạng MACHINE-001 ... MACHINE-100 nếu còn.
+    old_3_digit_codes = [
+        f"MACHINE-{number:03d}"
+        for number in range(1, 101)
+    ]
+    Machine.objects.filter(code__in=old_3_digit_codes).update(
+        is_active=False
+    )
+
+    # Tắt các MACHINE-51 ... MACHINE-99 nếu đã từng tạo.
+    extra_2_digit_codes = [
+        machine_code(number)
+        for number in range(TOTAL_MACHINES + 1, 100)
+    ]
+    Machine.objects.filter(code__in=extra_2_digit_codes).update(
+        is_active=False
+    )
+
+    for number, code in enumerate(wanted_codes, start=1):
+        group = number % 10
+
+        descriptions = {
+            1: "RUN ổn định / AUTO.",
+            2: "STOP cố định / AUTO.",
+            3: "ALARM 301 cố định.",
+            4: "RUN ổn định / MANUAL.",
+            5: "RUN với Cycle Time dao động.",
+            6: "Mất dữ liệu định kỳ để test OFFLINE.",
+            7: "Luân phiên RUN / STOP.",
+            8: "RUN -> ALARM 702 -> STOP.",
+            9: "RUN và thay đổi Recipe.",
+            0: "Không RUN/STOP/ALARM để test UNKNOWN.",
+        }
+
+        Machine.objects.update_or_create(
+            code=code,
+            defaults={
+                "name": f"Máy mô phỏng {number:02d}",
+                "description": descriptions[group],
+                "is_active": True,
+            },
         )
 
-    elif alarm_bit:
-        alarm_code = 101
-
-    return {
-        "production_count": production_count,
-        "run_bit": run_bit,
-        "stop_bit": stop_bit,
-        "alarm_bit": alarm_bit,
-        "cycle_time_ms": cycle_time_ms,
-        "alarm_code": alarm_code,
-    }
-
-
-def print_reading(reading):
-    """
-    In kết quả ra Terminal để người lập trình
-    quan sát Collector đang hoạt động.
-    """
-
-    local_time = timezone.localtime(
-        reading.recorded_at
+    machines = list(
+        Machine.objects.filter(code__in=wanted_codes)
+        .order_by("code")
     )
 
-    cycle_text = (
-        f"{reading.cycle_time_ms} ms"
-        if reading.cycle_time_ms is not None
-        else "—"
-    )
+    active_count = Machine.objects.filter(is_active=True).count()
 
     print(
-        f"[{local_time:%H:%M:%S}] "
-        f"{reading.status_label:<7} | "
-        f"Sản lượng: {reading.production_count:<6} | "
-        f"Chu kỳ: {cycle_text:<8} | "
-        f"Alarm: {reading.alarm_code}",
-        flush=True,
+        f"MOCK READY: {len(machines)} máy test | "
+        f"ACTIVE toàn DB: {active_count}"
     )
 
+    if active_count != TOTAL_MACHINES:
+        print(
+            "LƯU Ý: DB còn máy active ngoài bộ MACHINE-01..50. "
+            "Dashboard có thể hiện nhiều hơn 50 máy."
+        )
 
-def main():
-    """
-    Chạy vòng lặp Collector cho đến khi người dùng
-    nhấn Ctrl + C.
-    """
+    return machines
 
-    random_generator = random.Random(
-        RANDOM_SEED
-    )
 
-    machine, _ = Machine.objects.get_or_create(
-        code=MACHINE_CODE,
-        defaults={
-            "name": MACHINE_NAME,
-            "description": (
-                "Máy dùng để kiểm thử hệ thống "
-                "trước khi kết nối PLC thật."
-            ),
-        },
-    )
+# ============================================================
+# COUNTER
+# ============================================================
 
-    latest_reading = (
+
+def latest_count(machine: Machine, fallback: int) -> int:
+    value = (
         machine.readings
         .order_by("-recorded_at")
+        .values_list("production_count", flat=True)
         .first()
     )
 
-    production_count = (
-        latest_reading.production_count
-        if latest_reading
-        else 0
+    return fallback if value is None else int(value)
+
+
+# ============================================================
+# SCENARIO
+# ============================================================
+
+
+def scenario_for(number: int, moment) -> dict:
+    """Sinh trạng thái cho 10 nhóm, mỗi nhóm lặp lại 5 máy."""
+
+    # Offset để 50 máy không đổi trạng thái cùng một thời điểm.
+    seconds = int(moment.timestamp()) + number * 7
+    group = number % 10
+
+    if group == 1:
+        return {
+            "write": True,
+            "label": "RUN-AUTO",
+            "run_bit": True,
+            "stop_bit": False,
+            "alarm_bit": False,
+            "auto_mode_bit": True,
+            "cycle_time_ms": random.randint(3200, 3800),
+            "alarm_code": 0,
+            "recipe_no": 1,
+        }
+
+    if group == 2:
+        return {
+            "write": True,
+            "label": "STOP",
+            "run_bit": False,
+            "stop_bit": True,
+            "alarm_bit": False,
+            "auto_mode_bit": True,
+            "cycle_time_ms": None,
+            "alarm_code": 0,
+            "recipe_no": 2,
+        }
+
+    if group == 3:
+        return {
+            "write": True,
+            "label": "ALARM-301",
+            "run_bit": False,
+            "stop_bit": False,
+            "alarm_bit": True,
+            "auto_mode_bit": True,
+            "cycle_time_ms": None,
+            "alarm_code": 301,
+            "recipe_no": 3,
+        }
+
+    if group == 4:
+        return {
+            "write": True,
+            "label": "RUN-MANUAL",
+            "run_bit": True,
+            "stop_bit": False,
+            "alarm_bit": False,
+            "auto_mode_bit": False,
+            "cycle_time_ms": random.randint(4000, 4900),
+            "alarm_code": 0,
+            "recipe_no": 1,
+        }
+
+    if group == 5:
+        slow = (seconds % 60) >= 40
+        return {
+            "write": True,
+            "label": "RUN-SLOW" if slow else "RUN-NORMAL",
+            "run_bit": True,
+            "stop_bit": False,
+            "alarm_bit": False,
+            "auto_mode_bit": True,
+            "cycle_time_ms": (
+                random.randint(5000, 6200)
+                if slow
+                else random.randint(2900, 3500)
+            ),
+            "alarm_code": 0,
+            "recipe_no": 2,
+        }
+
+    if group == 6:
+        # 30 giây ghi dữ liệu, 30 giây không ghi.
+        # STALE_AFTER_SECONDS=15 sẽ làm dashboard chuyển OFFLINE.
+        write = (seconds % 60) < 30
+
+        if not write:
+            return {
+                "write": False,
+                "label": "NO-DATA",
+            }
+
+        return {
+            "write": True,
+            "label": "RUN-BEFORE-OFFLINE",
+            "run_bit": True,
+            "stop_bit": False,
+            "alarm_bit": False,
+            "auto_mode_bit": True,
+            "cycle_time_ms": random.randint(3500, 4300),
+            "alarm_code": 0,
+            "recipe_no": 3,
+        }
+
+    if group == 7:
+        running = (seconds % 40) < 20
+        return {
+            "write": True,
+            "label": "RUN" if running else "STOP",
+            "run_bit": running,
+            "stop_bit": not running,
+            "alarm_bit": False,
+            "auto_mode_bit": True,
+            "cycle_time_ms": (
+                random.randint(3300, 4100)
+                if running
+                else None
+            ),
+            "alarm_code": 0,
+            "recipe_no": 4,
+        }
+
+    if group == 8:
+        phase = seconds % 75
+
+        if phase < 25:
+            return {
+                "write": True,
+                "label": "RUN",
+                "run_bit": True,
+                "stop_bit": False,
+                "alarm_bit": False,
+                "auto_mode_bit": True,
+                "cycle_time_ms": random.randint(3400, 4200),
+                "alarm_code": 0,
+                "recipe_no": 4,
+            }
+
+        if phase < 50:
+            return {
+                "write": True,
+                "label": "ALARM-702",
+                "run_bit": False,
+                "stop_bit": False,
+                "alarm_bit": True,
+                "auto_mode_bit": True,
+                "cycle_time_ms": None,
+                "alarm_code": 702,
+                "recipe_no": 4,
+            }
+
+        return {
+            "write": True,
+            "label": "STOP",
+            "run_bit": False,
+            "stop_bit": True,
+            "alarm_bit": False,
+            "auto_mode_bit": True,
+            "cycle_time_ms": None,
+            "alarm_code": 0,
+            "recipe_no": 4,
+        }
+
+    if group == 9:
+        recipe = ((seconds // 40) % 4) + 1
+        return {
+            "write": True,
+            "label": f"RUN-RECIPE-{recipe}",
+            "run_bit": True,
+            "stop_bit": False,
+            "alarm_bit": False,
+            "auto_mode_bit": True,
+            "cycle_time_ms": random.randint(3000, 3900),
+            "alarm_code": 0,
+            "recipe_no": recipe,
+        }
+
+    # group == 0
+    return {
+        "write": True,
+        "label": "UNKNOWN",
+        "run_bit": False,
+        "stop_bit": False,
+        "alarm_bit": False,
+        "auto_mode_bit": False,
+        "cycle_time_ms": None,
+        "alarm_code": 0,
+        "recipe_no": 0,
+    }
+
+
+# ============================================================
+# READING
+# ============================================================
+
+
+def make_reading(
+    machine: Machine,
+    number: int,
+    moment,
+    counter: int,
+):
+    scenario = scenario_for(number, moment)
+
+    if not scenario["write"]:
+        return None, counter, scenario["label"]
+
+    if scenario["run_bit"] and not scenario["alarm_bit"]:
+        counter += random.randint(1, 3)
+
+    reading = MachineReading(
+        machine=machine,
+        recorded_at=moment,
+        plc_online=False,
+        run_bit=scenario["run_bit"],
+        stop_bit=scenario["stop_bit"],
+        alarm_bit=scenario["alarm_bit"],
+        auto_mode_bit=scenario["auto_mode_bit"],
+        production_count=counter,
+        cycle_time_ms=scenario["cycle_time_ms"],
+        alarm_code=scenario["alarm_code"],
+        recipe_no=scenario["recipe_no"],
+        source=MachineReading.DataSource.MOCK,
     )
 
-    step_number = 0
+    return reading, counter, scenario["label"]
 
-    print("=" * 72)
-    print("KV8000 MACHINE MONITORING — MOCK COLLECTOR")
-    print("=" * 72)
-    print(f"Máy: {machine.code} — {machine.name}")
-    print(
-        "Nguồn: MOCK — dữ liệu mô phỏng, "
-        "không phải PLC thật."
+
+# ============================================================
+# HISTORY SEED
+# ============================================================
+
+
+def seed_recent_history(
+    machines: list[Machine],
+    counters: dict[int, int],
+):
+    """Tạo tối đa 30 phút lịch sử để Timeline có dữ liệu ngay."""
+
+    now = timezone.now()
+    since = now - timedelta(minutes=SEED_HISTORY_MINUTES)
+
+    recent_machine_ids = set(
+        MachineReading.objects.filter(
+            machine__in=machines,
+            recorded_at__gte=since,
+        ).values_list("machine_id", flat=True)
     )
-    print(
-        f"Chu kỳ ghi dữ liệu: "
-        f"{POLL_INTERVAL_SECONDS} giây"
-    )
-    print("Nhấn Ctrl + C để dừng.")
-    print("-" * 72)
+
+    rows: list[MachineReading] = []
+
+    for number, machine in enumerate(machines, start=1):
+        if machine.id in recent_machine_ids:
+            continue
+
+        counter = counters[machine.id]
+
+        for minutes_ago in range(
+            SEED_HISTORY_MINUTES,
+            0,
+            -1,
+        ):
+            moment = now - timedelta(minutes=minutes_ago)
+            reading, counter, _label = make_reading(
+                machine,
+                number,
+                moment,
+                counter,
+            )
+
+            if reading is not None:
+                rows.append(reading)
+
+        counters[machine.id] = counter
+
+    if rows:
+        MachineReading.objects.bulk_create(
+            rows,
+            batch_size=500,
+        )
+        print(f"SEED: {len(rows)} bản ghi lịch sử.")
+    else:
+        print("SEED: đã có dữ liệu gần đây, bỏ qua.")
+
+
+# ============================================================
+# LIVE BATCH
+# ============================================================
+
+
+def build_live_batch(
+    machines: list[Machine],
+    counters: dict[int, int],
+):
+    moment = timezone.now()
+    rows: list[MachineReading] = []
+
+    stats = {
+        "RUN": 0,
+        "STOP": 0,
+        "ALARM": 0,
+        "NO-DATA": 0,
+        "UNKNOWN": 0,
+    }
+
+    for number, machine in enumerate(machines, start=1):
+        reading, counter, label = make_reading(
+            machine,
+            number,
+            moment,
+            counters[machine.id],
+        )
+
+        counters[machine.id] = counter
+
+        if reading is None:
+            stats["NO-DATA"] += 1
+            continue
+
+        rows.append(reading)
+
+        if reading.alarm_bit:
+            stats["ALARM"] += 1
+        elif reading.run_bit:
+            stats["RUN"] += 1
+        elif reading.stop_bit:
+            stats["STOP"] += 1
+        else:
+            stats["UNKNOWN"] += 1
+
+    return rows, stats
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+
+def main():
+    print("=" * 72)
+    print("MACHINE MONITORING - MOCK 50 MACHINES")
+    print(f"POLL: {POLL_SECONDS}s | HISTORY: {SEED_HISTORY_MINUTES} phút")
+    print("KHÔNG KẾT NỐI PLC THẬT")
+    print("=" * 72)
+
+    while True:
+        try:
+            close_old_connections()
+
+            machines = ensure_machines()
+
+            counters = {
+                machine.id: latest_count(
+                    machine,
+                    fallback=1000 + index * 100,
+                )
+                for index, machine in enumerate(
+                    machines,
+                    start=1,
+                )
+            }
+
+            seed_recent_history(machines, counters)
+            break
+
+        except (OperationalError, InterfaceError) as exc:
+            print(f"DB INIT ERROR: {exc}")
+            print("Thử lại sau 10 giây...")
+            close_old_connections()
+            time.sleep(10)
 
     try:
         while True:
-            machine_state = determine_machine_state(
-                step_number
-            )
-
-            values = build_reading_values(
-                machine_state,
-                production_count,
-                random_generator,
-            )
-
-            production_count = values[
-                "production_count"
-            ]
-
-            # Đóng kết nối cũ nếu database đã restart.
-            close_old_connections()
+            cycle_started = time.monotonic()
 
             try:
-                reading = MachineReading.objects.create(
-                    machine=machine,
+                close_old_connections()
 
-                    # Không giả vờ rằng PLC thật đang online.
-                    plc_online=False,
-
-                    run_bit=values["run_bit"],
-                    stop_bit=values["stop_bit"],
-                    alarm_bit=values["alarm_bit"],
-
-                    # Mô phỏng máy đang ở chế độ tự động.
-                    auto_mode_bit=True,
-
-                    production_count=production_count,
-
-                    cycle_time_ms=values[
-                        "cycle_time_ms"
-                    ],
-
-                    alarm_code=values["alarm_code"],
-
-                    # Đổi Recipe sau mỗi 20 lần ghi.
-                    recipe_no=(
-                        1
-                        + (
-                            step_number // 20
-                        ) % 3
-                    ),
-
-                    source=(
-                        MachineReading
-                        .DataSource
-                        .MOCK
-                    ),
+                rows, stats = build_live_batch(
+                    machines,
+                    counters,
                 )
 
-                print_reading(reading)
+                db_started = time.monotonic()
 
-                step_number += 1
+                if rows:
+                    with transaction.atomic():
+                        MachineReading.objects.bulk_create(
+                            rows,
+                            batch_size=100,
+                        )
 
-                time.sleep(
-                    POLL_INTERVAL_SECONDS
+                db_ms = int(
+                    (time.monotonic() - db_started) * 1000
                 )
 
-            except OperationalError as error:
-                print(
-                    "[DATABASE ERROR] "
-                    "Không ghi được dữ liệu. "
-                    "Collector sẽ thử lại sau 3 giây.",
-                    flush=True,
-                )
+                close_old_connections()
 
                 print(
-                    f"Chi tiết: {error}",
-                    flush=True,
+                    f"[{timezone.localtime():%H:%M:%S}] "
+                    f"WRITE={len(rows):02d} | "
+                    f"RUN={stats['RUN']:02d} | "
+                    f"STOP={stats['STOP']:02d} | "
+                    f"ALARM={stats['ALARM']:02d} | "
+                    f"OFFLINE-WAIT={stats['NO-DATA']:02d} | "
+                    f"UNKNOWN={stats['UNKNOWN']:02d} | "
+                    f"DB={db_ms}ms"
                 )
 
-                time.sleep(3)
+            except (OperationalError, InterfaceError) as exc:
+                print(f"DB ERROR: {exc}")
+                close_old_connections()
+                print("Collector không crash; thử lại sau 10 giây.")
+                time.sleep(10)
+                continue
+
+            elapsed = time.monotonic() - cycle_started
+            sleep_for = max(0.0, POLL_SECONDS - elapsed)
+            time.sleep(sleep_for)
 
     except KeyboardInterrupt:
-        print()
-        print("-" * 72)
-        print("Mock Collector đã được dừng an toàn.")
+        print("\nĐã dừng MOCK Collector.")
+
+    finally:
+        close_old_connections()
 
 
 if __name__ == "__main__":

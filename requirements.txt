@@ -3,3 +3,4 @@ psycopg[binary]==3.3.4
 python-dotenv==1.2.2
 waitress==3.0.2
 mssql-django==1.7.4
+whitenoise==6.12.0
